@@ -9,45 +9,45 @@ import urllib.request
 import urllib.error
 import yaml
 from pathlib import Path
-from datetime import datetime
 from loguru import logger
 
 
 class ScriptGenerator:
     """Generates Hindi devotional scripts using Ollama LLM."""
 
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path: str = "config.yaml"):
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
-        self.model = self.config["script"]["model"]
-        self.ollama_url = self.config["script"]["ollama_url"]
-        self.temperature = self.config["script"]["temperature"]
-        self.max_tokens = self.config["script"]["max_tokens"]
-        self.language = self.config["script"]["language"]
+        script_cfg = self.config["script"]
+        self.model: str = script_cfg.get("model", "llama3:8b")
+        self.ollama_url: str = script_cfg.get("ollama_url", "http://localhost:11434/api/generate")
+        self.temperature: float = script_cfg.get("temperature", 0.7)
+        self.max_tokens: int = script_cfg.get("max_tokens", 500)
+        self.language: str = script_cfg.get("language", "hindi")
 
         # Fallback templates per deity
-        self.templates = {
+        self.templates: dict[str, list[str]] = {
             "krishna": [
                 "श्री कृष्ण भगवान की महिमा अपरंपार है। वे ब्रह्मांड के पालनकर्ता हैं। "
                 "उनकी मुरली की धुन सारे जगत को मोहित कर देती है। गीता का उपदेश देने वाले "
                 "कृष्ण ने अर्जुन को कर्तव्य का पाठ पढ़ाया। हरे कृष्ण हरे कृष्ण, कृष्ण कृष्ण हरे हरे। "
-                "हरे राम हरे राम, राम राम हरे हरे। भगवान कृष्ण की कृपा से सब संभव है।"
+                "हरे राम हरे राम, राम राम हरे हरे। भगवान कृष्ण की कृपा से सब संभव है।",
             ],
             "shiva": [
                 "ॐ नमः शिवाय। भोलेनाथ त्रिलोक के स्वामी हैं। वे संहारक भी हैं और पालनकर्ता भी। "
                 "कैलाश पर्वत पर ध्यानमग्न शिवजी की जटाओं से गंगा निकलती है। "
                 "उनके तीसरे नेत्र से ब्रह्मांड का विनाश होता है। ॐ नमः शिवाय, शिवाय नमः। "
-                "महादेव की भक्ति से सारे दुख दूर होते हैं।"
+                "महादेव की भक्ति से सारे दुख दूर होते हैं।",
             ],
             "ram": [
                 "जय श्री राम। मर्यादा पुरुषोत्तम भगवान राम सत्य और धर्म के प्रतीक हैं। "
                 "अयोध्या के राजा राम ने रावण का वध करके संसार को बुराई से मुक्त किया। "
                 "रामायण का हर पात्र हमें कुछ न कुछ सिखाता है। सीता माता की पवित्रता और "
-                "हनुमान जी की भक्ति अद्वितीय है। जय श्री राम।"
+                "हनुमान जी की भक्ति अद्वितीय है। जय श्री राम।",
             ],
         }
 
-    def generate_script(self, deity="krishna", topic=None):
+    def generate_script(self, deity: str = "krishna", topic: str | None = None) -> str:
         """Generate a devotional script using Ollama, with fallback to templates."""
         try:
             prompt = self._build_prompt(deity, topic)
@@ -61,7 +61,7 @@ class ScriptGenerator:
         # Fallback to template
         return self._fallback_template(deity)
 
-    def _build_prompt(self, deity, topic=None):
+    def _build_prompt(self, deity: str, topic: str | None = None) -> str:
         """Build a prompt for the LLM."""
         topic_text = f"विषय: {topic}" if topic else ""
         return (
@@ -73,7 +73,7 @@ class ScriptGenerator:
             f"अंत में एक मंत्र या भजन की पंक्ति जोड़ो।"
         )
 
-    def _call_ollama(self, prompt):
+    def _call_ollama(self, prompt: str) -> str:
         """Call Ollama API to generate text."""
         data = json.dumps({
             "model": self.model,
@@ -91,13 +91,9 @@ class ScriptGenerator:
             result = json.loads(resp.read().decode())
             return result.get("response", "")
 
-    def _fallback_template(self, deity):
+    def _fallback_template(self, deity: str) -> str:
         """Return pre-written template for the deity."""
-        deity = deity.lower()
-        if deity not in self.templates:
-            deity = "krishna"
-        return random.choice(self.templates[deity])
-
-    def estimate_duration(self, script_text):
-        """Estimate spoken duration in seconds (~4 chars/sec for Hindi)."""
-        return len(script_text) / 4.0
+        deity_lower = deity.lower()
+        if deity_lower not in self.templates:
+            deity_lower = "krishna"
+        return random.choice(self.templates[deity_lower])

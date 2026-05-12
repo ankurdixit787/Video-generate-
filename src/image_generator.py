@@ -54,31 +54,32 @@ class ImageGenerator:
         ],
     }
 
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path: str = "config.yaml"):
         import yaml
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
         img_cfg = self.config["image"]
-        self.provider = img_cfg.get("provider", "comfyui")
-        self.comfyui_url = img_cfg["comfyui_url"]
-        self.sd_url = img_cfg["sd_url"]
-        self.width = img_cfg["width"]
-        self.height = img_cfg["height"]
-        self.steps = img_cfg["steps"]
+        self.provider: str = img_cfg.get("provider", "comfyui")
+        self.comfyui_url: str = img_cfg.get("comfyui_url", "http://localhost:8188")
+        self.sd_url: str = img_cfg.get("sd_url", "http://localhost:7860")
+        self.width: int = img_cfg.get("width", 1080)
+        self.height: int = img_cfg.get("height", 1920)
+        self.steps: int = img_cfg.get("steps", 30)
 
-    def generate(self, prompt, output_path):
+    def generate(self, prompt: str, output_path: str) -> str:
         """Generate an image and save to output_path."""
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path_obj = Path(output_path)
+        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         if self.provider == "comfyui":
-            return self._generate_comfyui(prompt, str(output_path))
+            return self._generate_comfyui(prompt, str(output_path_obj))
         else:
-            return self._generate_sd(prompt, str(output_path))
+            return self._generate_sd(prompt, str(output_path_obj))
 
-    def generate_themed_images(self, deity, script_segments, output_dir, prefix="devotional"):
+    def generate_themed_images(self, deity: str, script_segments: list[str],
+                                output_dir: str, prefix: str = "devotional") -> list[str]:
         """Generate multiple themed devotional images based on script segments."""
-        temp_img_paths = []
+        temp_img_paths: list[str] = []
         theme = self.THEMES.get(deity.lower(), self.THEMES["krishna"])
         scenes = self.SCENES.get(deity.lower(), self.SCENES["krishna"])
 
@@ -99,20 +100,23 @@ class ImageGenerator:
                     result = self._generate_sd(api_prompt, str(output_path))
                 if result:
                     temp_img_paths.append(str(output_path))
+                    logger.info(f"✓ API image {i+1}/{num_images} generated via {self.provider}")
                     continue
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"API image gen failed for segment {i}: {e}")
 
             # Fallback: fast themed Pillow image
             self._generate_themed_fallback(
                 str(output_path), theme, scene, mantra, segment_text, i, num_images
             )
             temp_img_paths.append(str(output_path))
+            logger.info(f"✓ Fallback image {i+1}/{num_images} generated")
 
         logger.info(f"Generated {len(temp_img_paths)} themed images for deity={deity}")
         return temp_img_paths
 
-    def _generate_themed_fallback(self, output_path, theme, scene, mantra, text, index, total):
+    def _generate_themed_fallback(self, output_path: str, theme: dict, scene: str,
+                                   mantra: str, text: str, index: int, total: int) -> None:
         """Create a themed devotional image with gradient background and text."""
         import numpy as np
         from PIL import Image, ImageDraw
@@ -120,7 +124,7 @@ class ImageGenerator:
         w, h = self.width, self.height
         top_color, bottom_color = theme["gradient"]
 
-        # Fast gradient using numpy (row by row)
+        # Fast gradient using numpy
         gradient = np.zeros((h, w, 3), dtype=np.uint8)
         for y in range(h):
             ratio = y / h
@@ -128,7 +132,7 @@ class ImageGenerator:
             gradient[y, :, 1] = int(top_color[1] * (1 - ratio) + bottom_color[1] * ratio)
             gradient[y, :, 2] = int(top_color[2] * (1 - ratio) + bottom_color[2] * ratio)
 
-        img = Image.fromarray(gradient, "RGB")
+        img = Image.fromarray(gradient)
         draw = ImageDraw.Draw(img)
 
         # Decorative circles
@@ -142,7 +146,7 @@ class ImageGenerator:
         draw.text((w // 2, h // 4 + 30), mantra, fill=theme["text_color"], anchor="mm")
 
         # Scene name
-        draw.text((w // 2, h // 4 + 80), f"-- {scene} --", fill=theme["accent"], anchor="mm")
+        draw.text((w // 2, h // 4 + 80), f"— {scene} —", fill=theme["accent"], anchor="mm")
 
         # Segment text at bottom
         if text:
@@ -160,19 +164,19 @@ class ImageGenerator:
         img.save(output_path)
         logger.debug(f"Themed fallback image: {output_path}")
 
-    def _build_deity_prompt(self, deity, scene):
+    def _build_deity_prompt(self, deity: str, scene: str) -> str:
         """Build an image prompt for the API."""
         prompts = {
             "krishna": f"Lord Krishna in Vrindavan, {scene}, divine blue skin, peacock feather,"
-                       " highly detailed devotional art, cinematic lighting, vibrant colors, 4K",
+                       f" highly detailed devotional art, cinematic lighting, vibrant colors, 4K",
             "shiva": f"Lord Shiva on Mount Kailash, {scene}, third eye, crescent moon,"
-                     " divine peaceful scene, highly detailed, cinematic lighting, 4K",
+                     f" divine peaceful scene, highly detailed, cinematic lighting, 4K",
             "ram": f"Lord Rama, {scene}, divine serene expression, bow and arrow,"
-                   " highly detailed devotional art, cinematic lighting, vibrant colors, 4K",
+                   f" highly detailed devotional art, cinematic lighting, vibrant colors, 4K",
         }
         return prompts.get(deity.lower(), prompts["krishna"])
 
-    def _generate_comfyui(self, prompt, output_path):
+    def _generate_comfyui(self, prompt: str, output_path: str) -> str:
         """Generate via ComfyUI API."""
         try:
             workflow = self._build_workflow(prompt)
@@ -202,7 +206,7 @@ class ImageGenerator:
             logger.error(f"ComfyUI failed: {e}")
             raise
 
-    def _generate_sd(self, prompt, output_path):
+    def _generate_sd(self, prompt: str, output_path: str) -> str:
         """Generate via Stable Diffusion WebUI API."""
         try:
             payload = {
@@ -229,7 +233,7 @@ class ImageGenerator:
             logger.error(f"Stable Diffusion failed: {e}")
             raise
 
-    def _build_workflow(self, prompt):
+    def _build_workflow(self, prompt: str) -> dict:
         """Build ComfyUI workflow JSON."""
         return {
             "3": {
@@ -255,9 +259,9 @@ class ImageGenerator:
             "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "devotional", "images": ["8", 0]}},
         }
 
-    def generate_batch(self, prompts, output_dir, prefix="frame"):
+    def generate_batch(self, prompts: list[str], output_dir: str, prefix: str = "frame") -> list[str]:
         """Generate multiple images for a sequence."""
-        paths = []
+        paths: list[str] = []
         for i, prompt in enumerate(prompts):
             path = Path(output_dir) / f"{prefix}_{i:03d}.png"
             self.generate(prompt, str(path))

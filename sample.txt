@@ -1,1 +1,2 @@
-Yeh ek sample text file hai jo repository mein add ki gayi hai.
+# sample script text
+Om Namah Shivaya

@@ -26,7 +26,7 @@ voice:
 
 # Image generation
 image:
-  provider: "comfyui"  # or "sd" for direct Stable Diffusion API
+  provider: "fallback"  # Use "comfyui" or "sd" only if those services run
   comfyui_url: "http://localhost:8188"
   sd_url: "http://localhost:7860"
   width: 1080
@@ -37,7 +37,9 @@ image:
 
 # Subtitles
 subtitles:
-  font: "assets/fonts/NotoSansHindi-Bold.ttf"
+  # Font: download NotoSansDevanagari from Google Fonts
+  # Place in assets/fonts/NotoSansDevanagari-Bold.ttf
+  font: "assets/fonts/NotoSansDevanagari-Bold.ttf"
   font_size: 48
   font_color: "white"
   stroke_color: "black"
@@ -47,7 +49,7 @@ subtitles:
 
 # Background music
 music:
-  provider: "audiocraft"  # or "local" for pre-downloaded tracks
+  provider: "local"  # "audiocraft" for AI music, "local" for pre-downloaded
   audiocraft_url: "http://localhost:8080"
   local_music_dir: "assets/music/"
   volume_reduction: 0.3  # Reduce music volume relative to voice
