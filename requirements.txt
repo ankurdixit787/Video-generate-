@@ -1,0 +1,21 @@
+# AI Devotional Video Generator - Dependencies
+# Core
+moviepy>=1.0.3
+Pillow>=10.0.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+
+# Audio
+edge-tts>=6.1.0
+pydub>=0.25.1
+
+# API / Networking
+requests>=2.31.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+
+# Utilities
+pyyaml>=6.0
+python-dotenv>=1.0.0
+loguru>=0.7.2

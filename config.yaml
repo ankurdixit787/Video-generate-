@@ -1,0 +1,64 @@
+# AI Devotional Video Generator - Configuration
+# All paths relative to project root
+
+# Video settings
+video:
+  resolution: [1080, 1920]  # 9:16 vertical format
+  fps: 24
+  duration_seconds: 60
+  bg_color: [255, 200, 100]  # Warm golden background
+
+# Script generation (Ollama)
+script:
+  model: "llama3:8b"
+  ollama_url: "http://localhost:11434/api/generate"
+  temperature: 0.7
+  max_tokens: 500
+  language: "hindi"
+  default_deity: "krishna"
+
+# Voice over (Edge-TTS)
+voice:
+  provider: "edge-tts"
+  voice: "hi-IN-SwaraNeural"
+  rate: "+0%"
+  volume: "+0%"
+
+# Image generation
+image:
+  provider: "comfyui"  # or "sd" for direct Stable Diffusion API
+  comfyui_url: "http://localhost:8188"
+  sd_url: "http://localhost:7860"
+  width: 1080
+  height: 1920
+  steps: 30
+  cfg_scale: 7.0
+  batch_size: 1
+
+# Subtitles
+subtitles:
+  font: "assets/fonts/NotoSansHindi-Bold.ttf"
+  font_size: 48
+  font_color: "white"
+  stroke_color: "black"
+  stroke_width: 2
+  position: "bottom"  # bottom, center, top
+  max_chars_per_line: 40
+
+# Background music
+music:
+  provider: "audiocraft"  # or "local" for pre-downloaded tracks
+  audiocraft_url: "http://localhost:8080"
+  local_music_dir: "assets/music/"
+  volume_reduction: 0.3  # Reduce music volume relative to voice
+
+# Output
+output:
+  dir: "output/"
+  filename_template: "{deity}_{timestamp}.mp4"
+  temp_dir: "temp/"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/pipeline.log"
