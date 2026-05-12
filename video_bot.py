@@ -2,6 +2,7 @@ import os
 import time
 import asyncio
 import edge_tts
+import traceback
 from moviepy.editor import AudioFileClip, ImageClip
 
 # Safely import or install required libraries
@@ -40,130 +41,137 @@ BG_IMAGE_FILE = "background_image.jpg"
 # ==========================================
 # 2. TELEGRAM CREDENTIALS
 # ==========================================
-TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID_HERE"
 
 # ==========================================
-# 3. FUNCTIONS WITH DEBUGGING
+# 3. FUNCTIONS
 # ==========================================
 
-async def generate_audio():
-    print("[Debug] Starting Audio Generation...")
+def download_and_prepare_image():
+    print("[DEBUG] Starting image download...")
+    # Using a reliable image URL (Unsplash nature/sunset as placeholder)
+    url = "https://images.unsplash.com/photo-1604500858850-9830538f95fb?q=80&w=1080&auto=format&fit=crop"
+    
     try:
-        communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
-        await communicate.save(AUDIO_FILE)
-        print(f"[Debug] Audio saved successfully as {AUDIO_FILE}")
-        return True
-    except Exception as e:
-        print(f"[Error] Failed to generate audio: {e}")
-        return False
-
-def download_image():
-    print("[Debug] Starting Image Download...")
-    # Reliable high quality religious/nature placeholder from Unsplash
-    image_url = "https://images.unsplash.com/photo-1590086782792-42dd2350140d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1080&q=80"
-    try:
-        response = requests.get(image_url, stream=True)
+        response = requests.get(url, stream=True, timeout=10)
         if response.status_code == 200:
             with open(BG_IMAGE_FILE, 'wb') as f:
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
-            print(f"[Debug] Image downloaded successfully to {BG_IMAGE_FILE}")
+            print("[DEBUG] Image downloaded. Now fixing resolution and format...")
             
-            # Verify if it's a valid image using PIL
-            try:
-                img = Image.open(BG_IMAGE_FILE)
-                img.verify()
-                print(f"[Debug] Image verification successful. Format: {img.format}, Size: {img.size}")
-                return True
-            except Exception as img_err:
-                print(f"[Error] Downloaded file is not a valid image: {img_err}")
-                return False
+            # FIX: Open with PIL, convert to RGB (removes alpha channel which causes issues),
+            # and resize to exactly 1080x1920 (ensures width/height are even numbers for x264 codec)
+            img = Image.open(BG_IMAGE_FILE)
+            img = img.convert("RGB")
+            img = img.resize((1080, 1920), Image.LANCZOS)
+            img.save(BG_IMAGE_FILE)
+            print("[DEBUG] Image prepared successfully (1080x1920, RGB).")
+            return True
         else:
-            print(f"[Error] Failed to download image. HTTP Status: {response.status_code}")
+            print(f"[ERROR] Failed to download image. Status code: {response.status_code}")
             return False
     except Exception as e:
-        print(f"[Error] Exception during image download: {e}")
+        print(f"[ERROR] Exception during image download/preparation: {e}")
         return False
 
 def send_image_to_telegram():
-    print(f"[Debug] Sending {BG_IMAGE_FILE} to Telegram...")
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
-        print("[Warning] Telegram Bot Token not set! Skipping sending to Telegram.")
+    print("[DEBUG] Sending image to Telegram...")
+    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print("[DEBUG] Telegram Token not set. Skipping Telegram upload.")
         return
-
+        
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     try:
-        with open(BG_IMAGE_FILE, 'rb') as img:
-            payload = {'chat_id': TELEGRAM_CHAT_ID}
-            files = {'photo': img}
+        with open(BG_IMAGE_FILE, 'rb') as photo:
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": "Background Image Check"}
+            files = {"photo": photo}
             response = requests.post(url, data=payload, files=files)
             if response.status_code == 200:
-                print("[Debug] Image successfully sent to Telegram.")
+                print("[DEBUG] Image successfully sent to Telegram.")
             else:
-                print(f"[Error] Failed to send to Telegram. Response: {response.text}")
+                print(f"[ERROR] Telegram send failed: {response.text}")
     except Exception as e:
-        print(f"[Error] Exception sending to Telegram: {e}")
+        print(f"[ERROR] Failed to send image to Telegram: {e}")
+
+async def generate_audio():
+    print("[DEBUG] Generating AI Voiceover...")
+    try:
+        communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
+        await communicate.save(AUDIO_FILE)
+        print("[DEBUG] Audio generation successful.")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Audio generation failed: {e}")
+        return False
 
 def create_video():
-    print("[Debug] Starting Video Generation...")
+    print("[DEBUG] Starting video creation process...")
     try:
         if not os.path.exists(AUDIO_FILE):
-            print(f"[Error] Audio file {AUDIO_FILE} not found!")
+            print("[ERROR] Audio file not found. Cannot create video.")
             return
         if not os.path.exists(BG_IMAGE_FILE):
-            print(f"[Error] Image file {BG_IMAGE_FILE} not found!")
+            print("[ERROR] Background image not found. Cannot create video.")
             return
-
-        print("[Debug] Loading AudioClip...")
+            
+        print("[DEBUG] Loading AudioFileClip...")
         audio_clip = AudioFileClip(AUDIO_FILE)
-        duration = audio_clip.duration
-        print(f"[Debug] Audio duration is: {duration} seconds")
-
-        print("[Debug] Loading ImageClip...")
+        audio_duration = audio_clip.duration
+        print(f"[DEBUG] Audio duration: {audio_duration} seconds.")
+        
+        print("[DEBUG] Loading ImageClip...")
+        # FIX: Ensure we explicitly set FPS on the image clip and use a proper duration
         video_clip = ImageClip(BG_IMAGE_FILE)
-        
-        print("[Debug] Configuring ImageClip duration and FPS...")
-        # IMPORTANT: If duration and FPS are not set, ImageClip renders as empty/black frames.
-        video_clip = video_clip.set_duration(duration)
-        
-        print("[Debug] Setting Audio to Video...")
+        video_clip = video_clip.set_duration(audio_duration)
         video_clip = video_clip.set_audio(audio_clip)
-
-        print("[Debug] Writing video file (this may take some time)...")
-        # Specifying fps is very important for an ImageClip to render correctly
+        video_clip = video_clip.set_fps(24) # CRITICAL FIX for black screen/missing image
+        
+        print("[DEBUG] Writing final video file...")
         video_clip.write_videofile(
-            VIDEO_FILE, 
-            fps=24, 
-            codec="libx264", 
+            VIDEO_FILE,
+            fps=24,
+            codec="libx264",
             audio_codec="aac",
-            logger="bar"
+            threads=4,
+            preset="ultrafast",
+            logger=None # Disable logger to keep console clean, or remove this to see moviepy progress bar
         )
-        print("[Debug] Video generated successfully!")
+        print(f"\n[SUCCESS] Video created successfully! Saved as {VIDEO_FILE}")
+        
+        # Cleanup memory
+        audio_clip.close()
+        video_clip.close()
         
     except Exception as e:
-        print(f"[Error] An unexpected error occurred during video creation: {e}")
-        import traceback
+        print("[CRITICAL ERROR] Failed to create video. Traceback below:")
         traceback.print_exc()
 
+# ==========================================
+# 4. MAIN EXECUTION
+# ==========================================
 async def main():
-    print("\n=== Script Started ===")
+    print("--- Starting Video Bot ---")
     
-    audio_success = await generate_audio()
-    if not audio_success:
-        print("[Error] Stopping script due to Audio Generation failure.")
-        return
-
-    image_success = download_image()
-    if not image_success:
-        print("[Error] Stopping script due to Image Download failure.")
+    # Step 1: Download & Prepare Image
+    if not download_and_prepare_image():
+        print("[ERROR] Stopping process because image failed.")
         return
         
+    # Step 2: Send Image to Telegram for debugging
     send_image_to_telegram()
     
+    # Step 3: Generate Audio
+    if not await generate_audio():
+        print("[ERROR] Stopping process because audio failed.")
+        return
+        
+    # Step 4: Combine into Video
     create_video()
     
-    print("=== Script Finished ===\n")
+    print("--- Process Complete ---")
 
 if __name__ == "__main__":
+    # Run the async main function
     asyncio.run(main())
