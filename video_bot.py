@@ -2,11 +2,15 @@ import os
 import time
 import asyncio
 import edge_tts
-import urllib.request
-from urllib.request import Request, urlopen
 from moviepy.editor import AudioFileClip, ImageClip
 
-# Importing PIL (Pillow) to strictly verify the downloaded image
+# Safely import or install required libraries
+try:
+    import requests
+except ImportError:
+    os.system("pip install requests")
+    import requests
+
 try:
     from PIL import Image
 except ImportError:
@@ -33,114 +37,88 @@ AUDIO_FILE = "bhakti_audio.mp3"
 VIDEO_FILE = "bhakti_video.mp4"
 BG_IMAGE_FILE = "background_image.jpg"
 
-# Reliable image URL for Lord Shiva
-IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg"
+# Multiple reliable URLs to ensure at least one works
+IMAGE_URLS = [
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg",
+    "https://images.unsplash.com/photo-1604502840003-88849b293150?q=80&w=1000&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1590080642957-36e2f473855b?q=80&w=1000&auto=format&fit=crop",
+    "https://images.pexels.com/photos/7249635/pexels-photo-7249635.jpeg"
+]
 
-# ==========================================
-# 2. STRICT IMAGE DOWNLOADER & VERIFIER
-# ==========================================
 def download_and_verify_image():
-    print("Image download shuru kar rahe hain...")
-    attempt = 1
+    print("\n[*] Image download process shuru ho raha hai...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"
+    }
     
-    # Jab tak image theek se nahi aa jati, loop chalta rahega
+    attempt = 1
+    # Infinite loop as requested by user. Will not break until an image is 100% downloaded and verified.
     while True:
-        try:
-            print(f"Attempt {attempt}: Downloading image...")
-            
-            # Added strict browser headers so Wikimedia doesn't block us
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-            }
-            req = Request(IMAGE_URL, headers=headers)
-            
-            with urlopen(req) as response, open(BG_IMAGE_FILE, 'wb') as out_file:
-                data = response.read()
-                out_file.write(data)
-            
-            # Strict Check: Verifying if the file is a REAL image
+        print(f"\n--- Attempt {attempt} ---")
+        for url in IMAGE_URLS:
+            print(f"Checking URL: {url[:60]}...")
             try:
-                img = Image.open(BG_IMAGE_FILE)
-                img.verify() # Verifies if it's broken/corrupt without loading the whole thing
-                img.close()  # Close the file correctly
-                print(f"Success! Image proper aa gayi aur verify ho gayi attempt {attempt} mein.")
-                break # Image verified, breaking the infinite loop
-            except Exception as img_err:
-                print(f"Attempt {attempt} failed: File download hui par corrupt hai (Real image nahi hai). Retrying...")
-                
-        except Exception as e:
-            print(f"Attempt {attempt} failed (Network/Server error): {e}. Retrying in 2 seconds...")
+                response = requests.get(url, headers=headers, timeout=15)
+                if response.status_code == 200:
+                    with open(BG_IMAGE_FILE, 'wb') as f:
+                        f.write(response.content)
+                    
+                    # Verify image integrity strictly with PIL
+                    try:
+                        img = Image.open(BG_IMAGE_FILE)
+                        img.verify()  # Throws error if not a valid image
+                        print("[+] Success! Image perfectly download aur verify ho gayi hai.")
+                        return True # Exit the infinite loop
+                    except Exception as e:
+                        print(f"[-] File download hui par corrupt thi (Image nahi hai): {e}")
+                else:
+                    print(f"[-] Server ne block kiya ya error diya: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"[-] Download fail hua (Connection Error): {e}")
         
+        print("[!] Saare URLs is attempt mein fail ho gaye. 5 seconds baad dobara retry kar raha hoon...")
+        print("[!] Jab tak valid image nahi aayegi, yeh retry karta rahega!")
+        time.sleep(5)
         attempt += 1
-        time.sleep(2) # Wait 2 seconds before requesting again so we don't get IP banned
 
-# ==========================================
-# 3. TEXT-TO-SPEECH GENERATION
-# ==========================================
 async def generate_audio():
-    print("Audio generate ho raha hai...")
+    print("\n[*] Audio generate ho rahi hai...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print("Audio successfully generate ho gaya!")
+    print("[+] Audio successfully save ho gayi!")
 
-# ==========================================
-# 4. VIDEO GENERATION
-# ==========================================
 def create_video():
-    print("Video creation shuru kar rahe hain...")
+    print("\n[*] Video banana shuru kar rahe hain...")
     try:
+        # Load audio
         audio_clip = AudioFileClip(AUDIO_FILE)
-        audio_duration = audio_clip.duration
         
-        # Yahan tak aane ka matlab hai image pakka theek hai!
+        # Load the guaranteed verified image
         image_clip = ImageClip(BG_IMAGE_FILE)
         
-        # Resizing properly so it doesn't crash
-        w, h = image_clip.size
-        target_ratio = 1080 / 1920
-        current_ratio = w / h
+        # Process Video
+        video_clip = image_clip.set_duration(audio_clip.duration)
+        video_clip = video_clip.set_audio(audio_clip)
         
-        if current_ratio > target_ratio:
-            new_w = int(h * target_ratio)
-            x_center = w / 2
-            image_clip = image_clip.crop(x1=x_center-new_w/2, y1=0, x2=x_center+new_w/2, y2=h)
-        
-        image_clip = image_clip.resize(height=1920, width=1080)
-        
-        video = image_clip.set_duration(audio_duration)
-        video = video.set_audio(audio_clip)
-        
-        video.write_videofile(
-            VIDEO_FILE, 
-            fps=24, 
-            codec="libx264", 
-            audio_codec="aac",
-            threads=4
-        )
-        print("Video successfully ban gayi hai image ke sath! Check: bhakti_video.mp4")
-        
-        audio_clip.close()
-        image_clip.close()
-        video.close()
+        # Write the result to a file
+        video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+        print(f"\n[+++] YAY! Video '{VIDEO_FILE}' successfully ban gayi hai! Check karein.")
         
     except Exception as e:
-        print(f"Video banate waqt error aayi: {e}")
+        print(f"[-] Video banate waqt MoviePy error aaya: {e}")
 
-# ==========================================
-# 5. MAIN PIPELINE
-# ==========================================
-def main():
-    # 1. Jab tak image nahi aayegi, ye function aage nahi badhne dega
+async def main():
+    # Step 1: 100% guarantee an image is downloaded first
     download_and_verify_image()
     
-    # 2. Audio banega
-    asyncio.run(generate_audio())
+    # Step 2: Generate Audio
+    await generate_audio()
     
-    # 3. Video banega 100% guarantee image ke sath
+    # Step 3: Mix and generate Video
     create_video()
-    
-    print("Poora process complete ho gaya. Video image ke sath ready hai!")
 
 if __name__ == "__main__":
-    main()
+    # Ensure required packages exist (belt and suspenders)
+    os.system("pip install moviepy edge-tts")
+    asyncio.run(main())
