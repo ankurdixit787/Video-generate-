@@ -31,53 +31,55 @@ VIDEO_FILE = "bhakti_video.mp4"
 # 2. GENERATE AUDIO (TEXT TO SPEECH)
 # ==========================================
 async def generate_audio():
-    print("1. Audio generate ho rahi hai (Free Edge TTS)...")
+    print("Generating Audio...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print("-> Audio successfully ban gayi!")
+    print(f"Audio saved successfully as {AUDIO_FILE}")
 
 # ==========================================
-# 3. CREATE VIDEO (MOVIEPY)
+# 3. CREATE VIDEO
 # ==========================================
-def create_video():
-    print("\n2. Video ban rahi hai...")
-    audio = AudioFileClip(AUDIO_FILE)
-    duration = audio.duration
-
-    # Bhagwa (Orange) background color video (1920x1080) taaki error na aaye bina images ke
-    bg_clip = ColorClip(size=(1920, 1080), color=(255, 153, 51), duration=duration)
+def generate_video():
+    print("Generating Video...")
+    audio_clip = AudioFileClip(AUDIO_FILE)
     
-    video = bg_clip.set_audio(audio)
+    # Vertical Shorts Resolution (1080x1920) with a simple orange color background
+    video_clip = ColorClip(size=(1080, 1920), color=(255, 153, 51), duration=audio_clip.duration)
+    video_clip = video_clip.set_audio(audio_clip)
     
-    # Video save karein
-    video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac", logger=None)
-    print(f"-> Video ready hai! ({VIDEO_FILE})")
+    video_clip.write_videofile(
+        VIDEO_FILE,
+        fps=24,
+        codec="libx264",
+        audio_codec="aac"
+    )
+    print(f"Video saved successfully as {VIDEO_FILE}")
 
 # ==========================================
 # 4. UPLOAD TO YOUTUBE
 # ==========================================
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
-
 def upload_to_youtube():
-    print("\n3. YouTube par upload ho raha hai...")
-    if not os.path.exists("client_secrets.json"):
-        print("ERROR: 'client_secrets.json' file nahi mili!")
-        print("Kripya Google Cloud Console se YouTube Data API v3 enable karein aur OAuth credentials download karke is folder mein rakhein.")
+    CLIENT_SECRETS_FILE = "client_secret.json"
+    
+    if not os.path.exists(CLIENT_SECRETS_FILE):
+        print(f"Error: '{CLIENT_SECRETS_FILE}' file not found. Skipping YouTube upload.")
         return
 
-    flow = InstalledAppFlow.from_client_secrets_file("client_secrets.json", SCOPES)
+    print("Uploading to YouTube...")
+    SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+    flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
     credentials = flow.run_local_server(port=0)
-    youtube = build("youtube", "v3", credentials=credentials)
+    youtube = build('youtube', 'v3', credentials=credentials)
 
     request_body = {
-        "snippet": {
-            "categoryId": "22",
-            "title": "Bhagwan Shiv Ki Mahima 🙏 | Har Har Mahadev | Hindi Bhakti Status",
-            "description": "Om Namah Shivaya! Yeh ek bhakti video hai. Agar pasand aaye toh Like aur Subscribe zaroor karein.",
-            "tags": ["bhakti", "shiv", "har har mahadev", "hindi", "devotional"]
+        'snippet': {
+            'title': 'Har Har Mahadev | Bhakti Video',
+            'description': 'Om Namah Shivaya! Bholenath bhakti video. #shorts #mahadev #bhakti #bholenath',
+            'tags': ['mahadev', 'bhakti', 'shiv', 'shorts', 'bholenath'],
+            'categoryId': '22'
         },
-        "status": {
-            "privacyStatus": "public" # Ya 'private' rakh sakte hain starting mein
+        'status': {
+            'privacyStatus': 'private' # Set 'public' when you are ready to publish
         }
     }
 
@@ -88,17 +90,20 @@ def upload_to_youtube():
         media_body=media_file
     )
     response = request.execute()
-    print(f"-> Success! Video Uploaded. Video ID: {response['id']}")
+    print("Video uploaded successfully! Video ID:", response.get('id'))
 
 # ==========================================
-# MAIN EXECUTION
+# 5. MAIN EXECUTION
 # ==========================================
-if __name__ == "__main__":
-    # 1. Audio banayein
+def main():
+    # Run Audio Generation (Async)
     asyncio.run(generate_audio())
     
-    # 2. Video banayein
-    create_video()
+    # Run Video Generation
+    generate_video()
     
-    # 3. YouTube Upload (Jab client_secrets.json ready ho tab isko uncomment karein)
-    # upload_to_youtube()
+    # Upload to YouTube
+    upload_to_youtube()
+
+if __name__ == "__main__":
+    main()
