@@ -2,7 +2,8 @@ import os
 import asyncio
 import edge_tts
 import urllib.request
-from moviepy.editor import AudioFileClip, ImageClip
+from urllib.request import Request, urlopen
+from moviepy.editor import AudioFileClip, ImageClip, ColorClip
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -29,67 +30,63 @@ AUDIO_FILE = "bhakti_audio.mp3"
 VIDEO_FILE = "bhakti_video.mp4"
 BG_IMAGE_FILE = "background_image.jpg"
 
-# Reliable direct image URL (Lord Shiva Statue on Wikimedia Commons)
-IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg"
+IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Shiva_Statue_in_Rishikesh.jpg/800px-Shiva_Statue_in_Rishikesh.jpg"
 
-# ==========================================
-# 2. AUDIO GENERATION (TTS)
-# ==========================================
 async def generate_audio():
-    print("Audio generate ho raha hai...")
+    print("Generating audio with Edge TTS...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print("Audio successfully save ho gaya:", AUDIO_FILE)
+    print("Audio generated successfully.")
 
-# ==========================================
-# 3. IMAGE DOWNLOAD (WITH USER-AGENT FIX)
-# ==========================================
 def download_image():
-    print("Image download ho rahi hai...")
+    print(f"Downloading background image from: {IMAGE_URL}")
+    req = Request(
+        IMAGE_URL, 
+        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'}
+    )
     try:
-        # Wikipedia/Wikimedia blocks default python user agents. We must pass a standard web browser User-Agent.
-        req = urllib.request.Request(
-            IMAGE_URL, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        )
-        with urllib.request.urlopen(req) as response, open(BG_IMAGE_FILE, 'wb') as out_file:
+        with urlopen(req) as response, open(BG_IMAGE_FILE, 'wb') as out_file:
             data = response.read()
             out_file.write(data)
-        print("Image successfully download ho gayi:", BG_IMAGE_FILE)
+        
+        # Check if file actually downloaded properly and is not an empty/corrupted file
+        if os.path.exists(BG_IMAGE_FILE) and os.path.getsize(BG_IMAGE_FILE) > 5000:
+            print("Image successfully downloaded and verified!")
+            return True
+        else:
+            print("Downloaded image is corrupted or too small.")
+            return False
     except Exception as e:
-        print(f"Error downloading image: {e}")
-        raise
+        print(f"Failed to download image. Error: {e}")
+        return False
 
-# ==========================================
-# 4. VIDEO CREATION
-# ==========================================
 def create_video():
-    print("Video create ho rahi hai...")
-    try:
-        audio_clip = AudioFileClip(AUDIO_FILE)
-        image_clip = ImageClip(BG_IMAGE_FILE)
-        
-        video_clip = image_clip.set_duration(audio_clip.duration)
-        video_clip = video_clip.set_audio(audio_clip)
-        
-        video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
-        print("Video successfully ban gayi:", VIDEO_FILE)
-    except Exception as e:
-        print(f"Video banane mein error aayi: {e}")
+    print("Starting video creation...")
+    audio_clip = AudioFileClip(AUDIO_FILE)
+    
+    # Verify if image exists and is valid before passing to MoviePy
+    if os.path.exists(BG_IMAGE_FILE) and os.path.getsize(BG_IMAGE_FILE) > 5000:
+        try:
+            image_clip = ImageClip(BG_IMAGE_FILE)
+            video_clip = image_clip.set_duration(audio_clip.duration)
+        except Exception as e:
+            print(f"MoviePy couldn't process the image. Error: {e}")
+            print("Using a black background fallback.")
+            video_clip = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_duration(audio_clip.duration)
+    else:
+        print("Valid image not found. Using a black background fallback.")
+        video_clip = ColorClip(size=(1080, 1920), color=(0, 0, 0)).set_duration(audio_clip.duration)
 
-# ==========================================
-# 5. MAIN FUNCTION
-# ==========================================
+    video_clip = video_clip.set_audio(audio_clip)
+    
+    print("Writing video file...")
+    video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+    print("Video created successfully as", VIDEO_FILE)
+
 def main():
-    # 1. Download image first with proper headers
-    download_image()
-    
-    # 2. Generate Audio
     asyncio.run(generate_audio())
-    
-    # 3. Combine to Video
+    download_image()
     create_video()
-    print("Process complete! Check", VIDEO_FILE)
 
 if __name__ == "__main__":
     main()
