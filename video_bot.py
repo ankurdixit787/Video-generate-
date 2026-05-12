@@ -39,86 +39,83 @@ BG_IMAGE_FILE = "background_image.jpg"
 
 # Multiple reliable URLs to ensure at least one works
 IMAGE_URLS = [
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg",
-    "https://images.unsplash.com/photo-1604502840003-88849b293150?q=80&w=1000&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1590080642957-36e2f473855b?q=80&w=1000&auto=format&fit=crop",
-    "https://images.pexels.com/photos/7249635/pexels-photo-7249635.jpeg"
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg",
+    "https://cdn.pixabay.com/photo/2020/06/19/08/04/shiva-5316139_1280.jpg"
 ]
 
-def download_and_verify_image():
-    print("\n[*] Image download process shuru ho raha hai...")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"
-    }
-    
-    attempt = 1
-    # Infinite loop as requested by user. Will not break until an image is 100% downloaded and verified.
-    while True:
-        print(f"\n--- Attempt {attempt} ---")
-        for url in IMAGE_URLS:
-            print(f"Checking URL: {url[:60]}...")
-            try:
-                response = requests.get(url, headers=headers, timeout=15)
-                if response.status_code == 200:
-                    with open(BG_IMAGE_FILE, 'wb') as f:
-                        f.write(response.content)
-                    
-                    # Verify image integrity strictly with PIL
-                    try:
-                        img = Image.open(BG_IMAGE_FILE)
-                        img.verify()  # Throws error if not a valid image
-                        print("[+] Success! Image perfectly download aur verify ho gayi hai.")
-                        return True # Exit the infinite loop
-                    except Exception as e:
-                        print(f"[-] File download hui par corrupt thi (Image nahi hai): {e}")
-                else:
-                    print(f"[-] Server ne block kiya ya error diya: HTTP {response.status_code}")
-            except Exception as e:
-                print(f"[-] Download fail hua (Connection Error): {e}")
-        
-        print("[!] Saare URLs is attempt mein fail ho gaye. 5 seconds baad dobara retry kar raha hoon...")
-        print("[!] Jab tak valid image nahi aayegi, yeh retry karta rahega!")
-        time.sleep(5)
-        attempt += 1
+# ==========================================
+# TELEGRAM CONFIGURATION
+# ==========================================
+TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"  # Replace with your Bot Token
+TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID_HERE"      # Replace with your Chat ID
+
+# ==========================================
+# FUNCTIONS
+# ==========================================
+
+def download_image():
+    for url in IMAGE_URLS:
+        try:
+            print(f"Trying to download image from {url}")
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                with open(BG_IMAGE_FILE, 'wb') as f:
+                    f.write(response.content)
+                print("Image downloaded successfully!")
+                return True
+        except Exception as e:
+            print(f"Failed to download from {url}: {e}")
+    return False
 
 async def generate_audio():
-    print("\n[*] Audio generate ho rahi hai...")
+    print("Generating audio using edge-tts...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print("[+] Audio successfully save ho gayi!")
+    print("Audio generated successfully!")
 
 def create_video():
-    print("\n[*] Video banana shuru kar rahe hain...")
+    print("Creating video...")
+    audio_clip = AudioFileClip(AUDIO_FILE)
+    image_clip = ImageClip(BG_IMAGE_FILE)
+    
+    # Set video duration to audio duration
+    video = image_clip.set_duration(audio_clip.duration)
+    video = video.set_audio(audio_clip)
+    
+    video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+    print("Video created successfully!")
+
+def send_image_to_telegram(image_path):
+    if TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN_HERE":
+        print("Telegram Bot Token is missing. Skipping Telegram upload.")
+        return
+
+    print("Sending image to Telegram...")
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     try:
-        # Load audio
-        audio_clip = AudioFileClip(AUDIO_FILE)
-        
-        # Load the guaranteed verified image
-        image_clip = ImageClip(BG_IMAGE_FILE)
-        
-        # Process Video
-        video_clip = image_clip.set_duration(audio_clip.duration)
-        video_clip = video_clip.set_audio(audio_clip)
-        
-        # Write the result to a file
-        video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
-        print(f"\n[+++] YAY! Video '{VIDEO_FILE}' successfully ban gayi hai! Check karein.")
-        
+        with open(image_path, 'rb') as photo:
+            payload = {
+                "chat_id": TELEGRAM_CHAT_ID, 
+                "caption": "Har Har Mahadev! Background image successfully generated."
+            }
+            files = {"photo": photo}
+            response = requests.post(url, data=payload, files=files)
+            
+            if response.status_code == 200:
+                print("Image sent to Telegram successfully!")
+            else:
+                print(f"Failed to send image: {response.text}")
     except Exception as e:
-        print(f"[-] Video banate waqt MoviePy error aaya: {e}")
+        print(f"Error sending image to Telegram: {e}")
 
 async def main():
-    # Step 1: 100% guarantee an image is downloaded first
-    download_and_verify_image()
-    
-    # Step 2: Generate Audio
-    await generate_audio()
-    
-    # Step 3: Mix and generate Video
-    create_video()
+    if download_image():
+        await generate_audio()
+        create_video()
+        # Send the downloaded image to Telegram
+        send_image_to_telegram(BG_IMAGE_FILE)
+    else:
+        print("Failed to download any image. Exiting process.")
 
 if __name__ == "__main__":
-    # Ensure required packages exist (belt and suspenders)
-    os.system("pip install moviepy edge-tts")
     asyncio.run(main())
