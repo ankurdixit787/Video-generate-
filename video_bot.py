@@ -40,84 +40,130 @@ BG_IMAGE_FILE = "background_image.jpg"
 # ==========================================
 # 2. TELEGRAM CREDENTIALS
 # ==========================================
-# Yahan apna token aur chat ID dalein
 TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"
 
-def send_image_to_telegram(image_path):
-    print(f"Sending {image_path} to Telegram...")
-    if TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
-        print("Please update TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to send images.")
-        return
-        
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    try:
-        with open(image_path, 'rb') as photo:
-            payload = {'chat_id': TELEGRAM_CHAT_ID}
-            files = {'photo': photo}
-            response = requests.post(url, data=payload, files=files)
-            if response.status_code == 200:
-                print("Image sent to Telegram successfully! Check your chat.")
-            else:
-                print(f"Failed to send image. Status: {response.status_code}, Response: {response.text}")
-    except Exception as e:
-        print(f"Error sending image to Telegram: {e}")
+# ==========================================
+# 3. FUNCTIONS WITH DEBUGGING
+# ==========================================
 
 async def generate_audio():
-    print("Generating audio with edge-tts...")
-    communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
-    await communicate.save(AUDIO_FILE)
-    print(f"Audio saved to {AUDIO_FILE}")
-
-def download_background_image():
-    print("Downloading background image...")
-    # Devotional/Shiv image URL for sample
-    image_url = "https://images.unsplash.com/photo-1604052382103-2415170d1887?q=80&w=1920&auto=format&fit=crop"
+    print("[Debug] Starting Audio Generation...")
     try:
-        response = requests.get(image_url)
-        if response.status_code == 200:
-            with open(BG_IMAGE_FILE, "wb") as f:
-                f.write(response.content)
-            print("Background image downloaded successfully.")
-            
-            # Send the image to Telegram to verify it downloaded correctly
-            send_image_to_telegram(BG_IMAGE_FILE)
-            
-            return True
-        else:
-            print("Failed to download background image.")
-            return False
+        communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
+        await communicate.save(AUDIO_FILE)
+        print(f"[Debug] Audio saved successfully as {AUDIO_FILE}")
+        return True
     except Exception as e:
-        print(f"Error downloading image: {e}")
+        print(f"[Error] Failed to generate audio: {e}")
         return False
 
-def create_video():
-    print("Creating video...")
+def download_image():
+    print("[Debug] Starting Image Download...")
+    # Reliable high quality religious/nature placeholder from Unsplash
+    image_url = "https://images.unsplash.com/photo-1590086782792-42dd2350140d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1080&q=80"
     try:
-        audio_clip = AudioFileClip(AUDIO_FILE)
-        # Load image and set duration to match audio
-        image_clip = ImageClip(BG_IMAGE_FILE).set_duration(audio_clip.duration)
-        
-        # Set audio to image
-        video = image_clip.set_audio(audio_clip)
-        
-        # Write to file (fps=24 is standard)
-        video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
-        print(f"Video successfully created and saved as {VIDEO_FILE}")
+        response = requests.get(image_url, stream=True)
+        if response.status_code == 200:
+            with open(BG_IMAGE_FILE, 'wb') as f:
+                for chunk in response.iter_content(1024):
+                    f.write(chunk)
+            print(f"[Debug] Image downloaded successfully to {BG_IMAGE_FILE}")
+            
+            # Verify if it's a valid image using PIL
+            try:
+                img = Image.open(BG_IMAGE_FILE)
+                img.verify()
+                print(f"[Debug] Image verification successful. Format: {img.format}, Size: {img.size}")
+                return True
+            except Exception as img_err:
+                print(f"[Error] Downloaded file is not a valid image: {img_err}")
+                return False
+        else:
+            print(f"[Error] Failed to download image. HTTP Status: {response.status_code}")
+            return False
     except Exception as e:
-        print(f"Error creating video: {e}")
+        print(f"[Error] Exception during image download: {e}")
+        return False
 
-def main():
-    # 1. Download Background Image and send to Telegram
-    if not download_background_image():
-        print("Skipping video creation because image download failed.")
+def send_image_to_telegram():
+    print(f"[Debug] Sending {BG_IMAGE_FILE} to Telegram...")
+    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+        print("[Warning] Telegram Bot Token not set! Skipping sending to Telegram.")
         return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    try:
+        with open(BG_IMAGE_FILE, 'rb') as img:
+            payload = {'chat_id': TELEGRAM_CHAT_ID}
+            files = {'photo': img}
+            response = requests.post(url, data=payload, files=files)
+            if response.status_code == 200:
+                print("[Debug] Image successfully sent to Telegram.")
+            else:
+                print(f"[Error] Failed to send to Telegram. Response: {response.text}")
+    except Exception as e:
+        print(f"[Error] Exception sending to Telegram: {e}")
+
+def create_video():
+    print("[Debug] Starting Video Generation...")
+    try:
+        if not os.path.exists(AUDIO_FILE):
+            print(f"[Error] Audio file {AUDIO_FILE} not found!")
+            return
+        if not os.path.exists(BG_IMAGE_FILE):
+            print(f"[Error] Image file {BG_IMAGE_FILE} not found!")
+            return
+
+        print("[Debug] Loading AudioClip...")
+        audio_clip = AudioFileClip(AUDIO_FILE)
+        duration = audio_clip.duration
+        print(f"[Debug] Audio duration is: {duration} seconds")
+
+        print("[Debug] Loading ImageClip...")
+        video_clip = ImageClip(BG_IMAGE_FILE)
+        
+        print("[Debug] Configuring ImageClip duration and FPS...")
+        # IMPORTANT: If duration and FPS are not set, ImageClip renders as empty/black frames.
+        video_clip = video_clip.set_duration(duration)
+        
+        print("[Debug] Setting Audio to Video...")
+        video_clip = video_clip.set_audio(audio_clip)
+
+        print("[Debug] Writing video file (this may take some time)...")
+        # Specifying fps is very important for an ImageClip to render correctly
+        video_clip.write_videofile(
+            VIDEO_FILE, 
+            fps=24, 
+            codec="libx264", 
+            audio_codec="aac",
+            logger="bar"
+        )
+        print("[Debug] Video generated successfully!")
+        
+    except Exception as e:
+        print(f"[Error] An unexpected error occurred during video creation: {e}")
+        import traceback
+        traceback.print_exc()
+
+async def main():
+    print("\n=== Script Started ===")
     
-    # 2. Generate Audio
-    asyncio.run(generate_audio())
+    audio_success = await generate_audio()
+    if not audio_success:
+        print("[Error] Stopping script due to Audio Generation failure.")
+        return
+
+    image_success = download_image()
+    if not image_success:
+        print("[Error] Stopping script due to Image Download failure.")
+        return
+        
+    send_image_to_telegram()
     
-    # 3. Create Video
     create_video()
+    
+    print("=== Script Finished ===\n")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
