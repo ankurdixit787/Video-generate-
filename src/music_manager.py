@@ -1,11 +1,12 @@
 """
 Music Manager - Handles background music for devotional videos.
-Supports AudioCraft generation and local music files.
+Uses FFmpeg directly for audio operations (no pydub dependency).
 """
 
 from pathlib import Path
 import random
 import json
+import subprocess
 import urllib.request
 from loguru import logger
 
@@ -22,6 +23,15 @@ class MusicManager:
         self.audiocraft_url = mc["audiocraft_url"]
         self.local_music_dir = Path(mc["local_music_dir"])
         self.volume_reduction = mc["volume_reduction"]
+        self._ffmpeg = self._find_ffmpeg()
+
+    def _find_ffmpeg(self):
+        """Find ffmpeg binary."""
+        try:
+            import imageio_ffmpeg
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            return "ffmpeg"
 
     def get_background_music(self, output_path, duration_sec=60, deity="krishna"):
         """Get background music track for the specified duration."""
@@ -31,7 +41,9 @@ class MusicManager:
         # Try local music first
         local_path = self._get_local_music()
         if local_path:
-            return self._adjust_duration(local_path, str(output_path), duration_sec)
+            result = self._adjust_duration(local_path, str(output_path), duration_sec)
+            if result:
+                return result
 
         # Try AudioCraft
         if self.provider == "audiocraft":
@@ -40,7 +52,7 @@ class MusicManager:
             except Exception as e:
                 logger.warning(f"AudioCraft failed: {e}")
 
-        # Fallback: generate silence
+        # Fallback: generate silence using ffmpeg
         return self._generate_silence(duration_sec, str(output_path))
 
     def _get_local_music(self):
@@ -52,20 +64,49 @@ class MusicManager:
         return None
 
     def _adjust_duration(self, input_path, output_path, target_duration):
-        """Loop or trim music to match target duration using pydub."""
+        """Loop or trim music to match target duration using FFmpeg."""
         try:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_mp3(input_path)
-            if len(audio) < target_duration * 1000:
-                loops = int(target_duration * 1000 / len(audio)) + 1
-                audio = audio * loops
-            audio = audio[:int(target_duration * 1000)]
-            audio.export(output_path, format="mp3")
-            logger.info(f"Music adjusted to {target_duration}s: {output_path}")
-            return str(output_path)
+            # Get duration of input
+            result = subprocess.run(
+                [self._ffmpeg, "-i", input_path, "-f", "null", "-"],
+                capture_output=True, text=True, timeout=10
+            )
+            import re
+            duration_match = re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", result.stderr)
+            if not duration_match:
+                return None
+            h, m, s = map(float, duration_match.groups())
+            input_duration = h * 3600 + m * 60 + s
+
+            if input_duration < target_duration:
+                # Loop the audio
+                loops = int(target_duration / input_duration) + 1
+                # Create a concat file
+                concat_file = str(Path(output_path).parent / "concat_list.txt")
+                with open(concat_file, "w") as f:
+                    for _ in range(loops):
+                        f.write(f"file '{input_path}'\n")
+
+                subprocess.run(
+                    [self._ffmpeg, "-f", "concat", "-safe", "0",
+                     "-i", concat_file, "-t", str(target_duration),
+                     "-c", "copy", "-y", output_path],
+                    capture_output=True, timeout=30
+                )
+            else:
+                # Trim to exact duration
+                subprocess.run(
+                    [self._ffmpeg, "-i", input_path, "-t", str(target_duration),
+                     "-c", "copy", "-y", output_path],
+                    capture_output=True, timeout=30
+                )
+
+            if Path(output_path).exists():
+                logger.info(f"Music adjusted to {target_duration}s: {output_path}")
+                return str(output_path)
         except Exception as e:
             logger.error(f"Audio adjustment failed: {e}")
-            return None
+        return None
 
     def _generate_music(self, duration, output_path, deity="krishna"):
         """Generate devotional music using AudioCraft/MusicGen."""
@@ -97,32 +138,35 @@ class MusicManager:
         return prompts.get(deity.lower(), "Indian devotional spiritual calm music")
 
     def _generate_silence(self, duration_sec, output_path):
-        """Generate silent audio as fallback."""
-        from pydub import AudioSegment, generators
-        silence = AudioSegment.silent(duration=duration_sec * 1000)
-        silence.export(output_path, format="mp3")
+        """Generate silent audio using FFmpeg."""
+        subprocess.run(
+            [self._ffmpeg, "-f", "lavfi", "-i",
+             f"anullsrc=r=44100:cl=mono", "-t",
+             str(duration_sec), "-c:a", "aac", "-b:a", "128k",
+             "-y", output_path],
+            capture_output=True, timeout=30
+        )
         logger.warning(f"Silence track created as fallback: {output_path}")
         return str(output_path)
 
     def mix_with_voice(self, music_path, voice_path, output_path, music_volume=None):
-        """Mix background music with voiceover."""
+        """Mix background music with voiceover using FFmpeg."""
         try:
-            from pydub import AudioSegment
             if music_volume is None:
                 music_volume = self.volume_reduction
 
-            music = AudioSegment.from_mp3(music_path)
-            voice = AudioSegment.from_mp3(voice_path)
+            # Reduce music volume (0.3 = 30% of original volume)
+            vol_filter = f"volume={music_volume}[music];[music][voice]amix=inputs=2:duration=first"
+            subprocess.run(
+                [self._ffmpeg, "-i", music_path, "-i", voice_path,
+                 "-filter_complex", vol_filter,
+                 "-c:a", "aac", "-b:a", "128k", "-y", output_path],
+                capture_output=True, timeout=30
+            )
 
-            # Reduce music volume and overlay
-            music = music - (music_volume * 20)  # Convert ratio to dB reduction
-            mixed = voice.overlay(music, loop=True)
-
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mixed.export(str(output_path), format="mp3")
-            logger.info(f"Mixed audio saved: {output_path}")
-            return str(output_path)
+            if Path(output_path).exists():
+                logger.info(f"Mixed audio saved: {output_path}")
+                return str(output_path)
         except Exception as e:
             logger.error(f"Audio mixing failed: {e}")
             return voice_path
