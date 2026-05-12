@@ -37,87 +37,87 @@ AUDIO_FILE = "bhakti_audio.mp3"
 VIDEO_FILE = "bhakti_video.mp4"
 BG_IMAGE_FILE = "background_image.jpg"
 
-# Telegram Credentials (Replace with your own before running)
+# ==========================================
+# 2. TELEGRAM CREDENTIALS
+# ==========================================
+# Yahan apna token aur chat ID dalein
 TELEGRAM_BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_TELEGRAM_CHAT_ID"
-
-# Multiple reliable URLs to ensure at least one works
-IMAGE_URLS = [
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg",
-    "https://cdn.pixabay.com/photo/2023/02/13/06/13/lord-shiva-7786524_960_720.jpg"
-]
-
-def download_image():
-    for url in IMAGE_URLS:
-        try:
-            response = requests.get(url, stream=True, timeout=10)
-            if response.status_code == 200:
-                with open(BG_IMAGE_FILE, 'wb') as f:
-                    for chunk in response.iter_content(1024):
-                        f.write(chunk)
-                print(f"Image successfully downloaded from {url}")
-                
-                # Optional: Verify if it's a valid image using PIL
-                try:
-                    img = Image.open(BG_IMAGE_FILE)
-                    img.verify() 
-                    print("Image verification passed.")
-                    return True
-                except Exception as verify_err:
-                    print(f"Image verification failed for {url}: {verify_err}")
-        except Exception as e:
-            print(f"Failed to download from {url}: {e}")
-    return False
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
 
 def send_image_to_telegram(image_path):
+    print(f"Sending {image_path} to Telegram...")
     if TELEGRAM_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
-        print("Telegram Bot Token not configured. Skipping Telegram debug send.")
+        print("Please update TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to send images.")
         return
-
-    print("Sending image to Telegram for debugging...")
+        
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     try:
-        with open(image_path, 'rb') as img:
+        with open(image_path, 'rb') as photo:
             payload = {'chat_id': TELEGRAM_CHAT_ID}
-            files = {'photo': img}
+            files = {'photo': photo}
             response = requests.post(url, data=payload, files=files)
             if response.status_code == 200:
-                print("Image successfully sent to Telegram!")
+                print("Image sent to Telegram successfully! Check your chat.")
             else:
-                print(f"Failed to send image to Telegram: {response.text}")
+                print(f"Failed to send image. Status: {response.status_code}, Response: {response.text}")
     except Exception as e:
-        print(f"Error while sending to Telegram: {e}")
+        print(f"Error sending image to Telegram: {e}")
 
 async def generate_audio():
-    print("Generating audio via Edge TTS...")
+    print("Generating audio with edge-tts...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print("Audio generated successfully.")
+    print(f"Audio saved to {AUDIO_FILE}")
+
+def download_background_image():
+    print("Downloading background image...")
+    # Devotional/Shiv image URL for sample
+    image_url = "https://images.unsplash.com/photo-1604052382103-2415170d1887?q=80&w=1920&auto=format&fit=crop"
+    try:
+        response = requests.get(image_url)
+        if response.status_code == 200:
+            with open(BG_IMAGE_FILE, "wb") as f:
+                f.write(response.content)
+            print("Background image downloaded successfully.")
+            
+            # Send the image to Telegram to verify it downloaded correctly
+            send_image_to_telegram(BG_IMAGE_FILE)
+            
+            return True
+        else:
+            print("Failed to download background image.")
+            return False
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+        return False
 
 def create_video():
     print("Creating video...")
     try:
         audio_clip = AudioFileClip(AUDIO_FILE)
-        image_clip = ImageClip(BG_IMAGE_FILE)
+        # Load image and set duration to match audio
+        image_clip = ImageClip(BG_IMAGE_FILE).set_duration(audio_clip.duration)
         
-        # Set the duration of the image clip to match the audio
-        video_clip = image_clip.set_duration(audio_clip.duration)
-        video_clip = video_clip.set_audio(audio_clip)
+        # Set audio to image
+        video = image_clip.set_audio(audio_clip)
         
-        video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
-        print("Video created successfully: ", VIDEO_FILE)
+        # Write to file (fps=24 is standard)
+        video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+        print(f"Video successfully created and saved as {VIDEO_FILE}")
     except Exception as e:
         print(f"Error creating video: {e}")
 
-async def main():
-    if download_image():
-        # Debug: Send downloaded image to Telegram
-        send_image_to_telegram(BG_IMAGE_FILE)
-        
-        await generate_audio()
-        create_video()
-    else:
-        print("Failed to download background image. Aborting.")
+def main():
+    # 1. Download Background Image and send to Telegram
+    if not download_background_image():
+        print("Skipping video creation because image download failed.")
+        return
+    
+    # 2. Generate Audio
+    asyncio.run(generate_audio())
+    
+    # 3. Create Video
+    create_video()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
