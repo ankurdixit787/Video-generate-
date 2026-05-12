@@ -31,79 +31,92 @@ VIDEO_FILE = "bhakti_video.mp4"
 # 2. GENERATE AUDIO (TEXT TO SPEECH)
 # ==========================================
 async def generate_audio():
-    print("Generating Audio...")
+    print("\n🎵 Audio generate ho raha hai (Text to Speech)...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print(f"Audio saved successfully as {AUDIO_FILE}")
+    print("✅ Audio successfully save ho gaya: ", AUDIO_FILE)
 
 # ==========================================
-# 3. CREATE VIDEO
+# 3. GENERATE VIDEO (MERGING AUDIO & BACKGROUND)
 # ==========================================
 def generate_video():
-    print("Generating Video...")
-    audio_clip = AudioFileClip(AUDIO_FILE)
-    
-    # Vertical Shorts Resolution (1080x1920) with a simple orange color background
-    video_clip = ColorClip(size=(1080, 1920), color=(255, 153, 51), duration=audio_clip.duration)
-    video_clip = video_clip.set_audio(audio_clip)
-    
-    video_clip.write_videofile(
-        VIDEO_FILE,
-        fps=24,
-        codec="libx264",
-        audio_codec="aac"
-    )
-    print(f"Video saved successfully as {VIDEO_FILE}")
+    print("\n🎬 Video generate ho raha hai, kripya pratiksha karein...")
+    try:
+        # Load audio
+        audio_clip = AudioFileClip(AUDIO_FILE)
+        
+        # Create an orange background video clip for youtube shorts (1080x1920)
+        # Orange color RGB = (255, 165, 0)
+        video_clip = ColorClip(size=(1080, 1920), color=(255, 165, 0), duration=audio_clip.duration)
+        
+        # Set audio to the video
+        video_clip = video_clip.set_audio(audio_clip)
+        
+        # Write the result to a file
+        video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+        print("\n✅ Video ban kar taiyar hai: ", VIDEO_FILE)
+    except Exception as e:
+        print("\n❌ Video banate samay error aaya:", e)
 
 # ==========================================
-# 4. UPLOAD TO YOUTUBE
+# 4. YOUTUBE UPLOAD PROCESS
 # ==========================================
 def upload_to_youtube():
+    print("\n🚀 YouTube par upload check kar rahe hain...")
     CLIENT_SECRETS_FILE = "client_secret.json"
     
+    # Check if client_secret.json exists
     if not os.path.exists(CLIENT_SECRETS_FILE):
-        print(f"Error: '{CLIENT_SECRETS_FILE}' file not found. Skipping YouTube upload.")
+        print(f"⚠️ '{CLIENT_SECRETS_FILE}' file nahi mili.")
+        print("Agar YouTube par automatically upload karna hai, toh Google Cloud Console se OAuth 2.0 Client IDs bana kar us json file ko 'client_secret.json' ke naam se save karein.")
+        print("Aapki video successfully ban chuki hai aur local system mein save hai!")
         return
 
-    print("Uploading to YouTube...")
-    SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-    flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
-    credentials = flow.run_local_server(port=0)
-    youtube = build('youtube', 'v3', credentials=credentials)
+    try:
+        SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
+        credentials = flow.run_local_server(port=0)
+        youtube = build('youtube', 'v3', credentials=credentials)
 
-    request_body = {
-        'snippet': {
-            'title': 'Har Har Mahadev | Bhakti Video',
-            'description': 'Om Namah Shivaya! Bholenath bhakti video. #shorts #mahadev #bhakti #bholenath',
-            'tags': ['mahadev', 'bhakti', 'shiv', 'shorts', 'bholenath'],
-            'categoryId': '22'
-        },
-        'status': {
-            'privacyStatus': 'private' # Set 'public' when you are ready to publish
+        request_body = {
+            'snippet': {
+                'title': 'Om Namah Shivaya - Mahadev Bhakti Status',
+                'description': 'Har Har Mahadev! Bholenath ki kripa aap sab par bani rahe.',
+                'tags': ['mahadev', 'shiv', 'bhakti', 'status', 'om namah shivaya'],
+                'categoryId': '22'
+            },
+            'status': {
+                'privacyStatus': 'private' # Private par hai, public karne ke liye 'public' likhein
+            }
         }
-    }
 
-    media_file = MediaFileUpload(VIDEO_FILE, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=request_body,
-        media_body=media_file
-    )
-    response = request.execute()
-    print("Video uploaded successfully! Video ID:", response.get('id'))
+        media_file = MediaFileUpload(VIDEO_FILE, chunksize=-1, resumable=True)
+
+        response_upload = youtube.videos().insert(
+            part=','.join(request_body.keys()),
+            body=request_body,
+            media_body=media_file
+        ).execute()
+
+        print("✅ Upload successful! Video ID:", response_upload.get('id'))
+    except Exception as e:
+        print("❌ Upload karte samay error aaya:", e)
 
 # ==========================================
-# 5. MAIN EXECUTION
+# MAIN FUNCTION
 # ==========================================
-def main():
-    # Run Audio Generation (Async)
+if __name__ == "__main__":
+    # 1. Pehle audio create karte hain
     asyncio.run(generate_audio())
     
-    # Run Video Generation
-    generate_video()
+    # 2. Fir video generate karte hain
+    if os.path.exists(AUDIO_FILE):
+        generate_video()
+    else:
+        print("❌ Audio generate nahi ho paya, isliye video processing rok di gayi hai.")
     
-    # Upload to YouTube
-    upload_to_youtube()
-
-if __name__ == "__main__":
-    main()
+    # 3. Last mein YouTube upload process start karte hain
+    if os.path.exists(VIDEO_FILE):
+        upload_to_youtube()
+    else:
+        print("❌ Video generate nahi ho payi, isliye upload skip kar diya gaya.")
