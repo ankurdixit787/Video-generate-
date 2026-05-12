@@ -8,7 +8,6 @@ from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-import time
 
 # ==========================================
 # 1. CONFIGURATION & SCRIPT
@@ -30,63 +29,68 @@ AUDIO_FILE = "bhakti_audio.mp3"
 VIDEO_FILE = "bhakti_video.mp4"
 BG_IMAGE_FILE = "background_image.jpg"
 
+# Ek achhi nature/temple type image ka direct URL
+IMAGE_URL = "https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1920&auto=format&fit=crop"
+
 # ==========================================
 # 2. GENERATE AUDIO (TEXT TO SPEECH)
 # ==========================================
 async def generate_audio():
-    print("Generating audio from text...")
+    print("Audio generate ho rahi hai...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print("Audio generated successfully.")
+    print("Audio successfully save ho gayi!")
 
 # ==========================================
-# 3. CREATE VIDEO WITH BACKGROUND VISUALS
+# 3. DOWNLOAD BACKGROUND IMAGE
+# ==========================================
+def download_image():
+    print("Background image download ho rahi hai...")
+    try:
+        # User-Agent header zaroori hai taaki image server block na kare
+        req = urllib.request.Request(IMAGE_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response, open(BG_IMAGE_FILE, 'wb') as out_file:
+            out_file.write(response.read())
+        print("Image download complete!")
+    except Exception as e:
+        print(f"Image download me error aayi: {e}")
+
+# ==========================================
+# 4. CREATE VIDEO
 # ==========================================
 def create_video():
-    print("Creating video...")
-    
-    # Download a background image if it doesn't exist
-    if not os.path.exists(BG_IMAGE_FILE):
-        print("Downloading a sample background image...")
-        # Unsplash free spirituality/nature image url
-        image_url = "https://images.unsplash.com/photo-1590680425881-2856db32145b?q=80&w=1080"
-        urllib.request.urlretrieve(image_url, BG_IMAGE_FILE)
-
-    audio_clip = AudioFileClip(AUDIO_FILE)
-    
-    # Use ImageClip instead of ColorClip so we can see visuals
-    image_clip = ImageClip(BG_IMAGE_FILE)
-    
-    # Set duration of the image to match the audio length
-    video_clip = image_clip.set_duration(audio_clip.duration)
-    
-    # Attach the generated audio to the video
-    video_clip = video_clip.set_audio(audio_clip)
-    
-    # Export the final video
-    video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
-    print(f"Video created successfully: {VIDEO_FILE}")
+    print("Video ban rahi hai...")
+    try:
+        # Load audio
+        audio = AudioFileClip(AUDIO_FILE)
+        
+        # Load image (ab yeh actual image dikhayega)
+        video = ImageClip(BG_IMAGE_FILE)
+        
+        # Video ki lambai audio ke barabar set karein
+        video = video.set_duration(audio.duration)
+        
+        # Audio ko video ke saath merge karein
+        video = video.set_audio(audio)
+        
+        # Video ko save karein (fps=24 dena bahut zaroori hai warna image properly render nahi hoti)
+        video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+        print(f"Video successfully ban gayi hai: {VIDEO_FILE}")
+    except Exception as e:
+        print(f"Video banate waqt error aayi: {e}")
 
 # ==========================================
-# 4. YOUTUBE UPLOAD LOGIC (PLACEHOLDER)
-# ==========================================
-def upload_to_youtube():
-    # Yahan aap apna YouTube upload ka logic daal sakte hain
-    print("Ready for YouTube Upload.")
-    pass
-
-# ==========================================
-# MAIN EXECUTION
+# MAIN FUNCTION
 # ==========================================
 def main():
-    # Generate TTS Audio
+    # Pehle audio banayenge
     asyncio.run(generate_audio())
     
-    # Create Video with visuals and audio
-    create_video()
+    # Phir image download karenge
+    download_image()
     
-    # Uncomment below to enable upload
-    # upload_to_youtube()
+    # Uske baad un dono ko jod kar video banayenge
+    create_video()
 
 if __name__ == "__main__":
     main()
