@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-Bhakti Video Generator — Multi-Image Voice-Synced with Ken Burns
-=================================================================
+Bhakti Video Generator v2.0 — Multi-Image Voice-Synced with Ken Burns
+=====================================================================
 Generates 4 devotional images with different mantras/scenes,
 creates voice-synced Ken Burns zoom clips, crossfades between them,
 and delivers the final video via Telegram.
 
-Voice-sync: each image's duration = (chars in segment / total chars) × audio_duration
-This ensures images change exactly with the spoken content.
+Supports skip flags for each pipeline step.
 """
 
 import os
 import sys
 import asyncio
+import argparse
 from pathlib import Path
+
+# Add src/ to Python path for imports
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from ffmpeg_utils import get_audio_duration
 
@@ -22,16 +25,9 @@ from ffmpeg_utils import get_audio_duration
 # ================================================================
 
 TEXT_SCRIPT = [
-    # Segment 0: Shiva intro + Kailash
     "Om Namah Shivaya. Dosto, bhagwan shiv ki kripa jis par hoti hai, uska jeevan dhanya ho jata hai. Shiv ji ko bholenath kaha jata hai kyunki wo apne bhakton ki pukar bahut jaldi sunte hain.",
-
-    # Segment 1: Sawan / Ganga
     "Sawan ke mahine mein shiv ji ki pooja ka vishesh mahatva hota hai. Kaha jata hai ki jo bhi bhakt sachhe dil se ek lota jal shivling par arpit karta hai, mahadev uski sabhi manokamna puri karte hain.",
-
-    # Segment 2: Kalyug / Dhyan
     "Aaj ke is kalyug mein, dhyan aur jap hi sabse bada sahara hai. Aap jab bhi pareshan ho, bas aankh band karke Har Har Mahadev ka jaap karein.",
-
-    # Segment 3: Closing / Subscribe
     "Bholenath kabhi apne bhakton ko niraash nahi karte. Agar aapko yeh video pasand aayi ho, toh kripya is channel ko subscribe karein, aur comment mein Har Har Mahadev zaroor likhein. Dhanyawad aur Om Namah Shivaya.",
 ]
 
@@ -56,10 +52,7 @@ XFADE_DUR = 1.0
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-SHIVA_COLORS = {
-    "top": (75, 0, 130),
-    "bottom": (255, 140, 0),
-}
+SHIVA_COLORS = {"top": (75, 0, 130), "bottom": (255, 140, 0)}
 
 
 # ================================================================
@@ -67,18 +60,23 @@ SHIVA_COLORS = {
 # ================================================================
 
 def create_gradient_images():
-    """Generate 4 themed devotional images with different scenes."""
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
     import numpy as np
 
     w, h = TARGET_W, TARGET_H
     tc, bc = SHIVA_COLORS["top"], SHIVA_COLORS["bottom"]
     paths = []
 
+    try:
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 70
+        )
+    except Exception:
+        font = ImageFont.load_default()
+
     for i, scene_data in enumerate(IMAGE_SCENES):
         path = f"devotional_img_{i:02d}.png"
 
-        # Gradient background
         gradient = np.zeros((h, w, 3), dtype=np.uint8)
         for y in range(h):
             ratio = y / h
@@ -89,25 +87,11 @@ def create_gradient_images():
         img = Image.fromarray(gradient)
         draw = ImageDraw.Draw(img)
 
-        # Decorative concentric circles
         cx, cy = w // 2, h // 3
         for radius in range(240, 60, -20):
             alpha = int(80 + 175 * (1 - radius / 240))
-            draw.ellipse(
-                [cx - radius, cy - radius, cx + radius, cy + radius],
-                outline=(alpha, alpha, alpha),
-                width=2,
-            )
-
-        # Big mantra
-        font_size = 70
-        try:
-            from PIL import ImageFont
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", font_size
-            )
-        except Exception:
-            font = ImageFont.load_default()
+            draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius],
+                         outline=(alpha, alpha, alpha), width=2)
 
         draw.text((cx, cy - 50), scene_data["mantra"], fill=(255, 255, 220),
                   anchor="mm", font=font)
@@ -132,7 +116,6 @@ def create_gradient_images():
 # ================================================================
 
 async def generate_audio():
-    """Generate Hindi voiceover from concatenated script."""
     import edge_tts
     full_script = " ".join(TEXT_SCRIPT).strip()
     print(f"[Audio] Generating voiceover ({len(full_script)} chars)...")
@@ -144,48 +127,33 @@ async def generate_audio():
         return True
     except Exception as e:
         print(f"      ✗ Audio FAILED: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return False
 
 
 # ================================================================
-# TIMESTAMP CALCULATION (VOICE-SYNCED)
+# TIMESTAMP CALCULATION
 # ================================================================
 
 def calc_segment_durations(segments, total_audio_duration):
-    """Distribute audio duration proportionally by segment char count."""
     char_counts = [len(s) for s in segments]
     total_chars = sum(char_counts)
-
-    durations = []
-    for count in char_counts:
-        dur = (count / total_chars) * total_audio_duration
-        durations.append(max(dur, 1.5))
-
+    durations = [max((c / total_chars) * total_audio_duration, 1.5) for c in char_counts]
     scale = total_audio_duration / sum(durations)
     durations = [d * scale for d in durations]
-
     starts = [0.0]
     for d in durations[:-1]:
         starts.append(starts[-1] + d)
-
     return list(zip(starts, durations))
 
 
 # ================================================================
-# VIDEO COMPOSITION (FFmpeg Ken Burns + Crossfade + Audio Sync)
+# VIDEO COMPOSITION
 # ================================================================
 
 def compose_multi_image_video(image_paths, segment_timings):
-    """
-    Create multi-image video with Ken Burns zoom + crossfade + audio.
-    Uses FFmpeg directly for reliability.
-    """
-    from ffmpeg_utils import find_ffmpeg
-    import subprocess
-    import tempfile
-    import re
+    from ffmpeg_utils import find_ffmpeg, get_clip_duration as _gcd
+    import subprocess, tempfile
 
     ffmpeg = find_ffmpeg()
     print(f"[Video] Composing {len(image_paths)} images with voice-synced timings...")
@@ -194,52 +162,46 @@ def compose_multi_image_video(image_paths, segment_timings):
         tmp = Path(tmpdir)
         clip_files = []
 
-        # --- Phase 1: Create individual zoom clips ---
         for i, (img_path, (start, dur)) in enumerate(zip(image_paths, segment_timings)):
             clip_path = str(tmp / f"zoom_{i:02d}.mp4")
             total_frames = max(1, int(dur * FPS))
-
             print(f"      Clip {i+1}: {dur:.1f}s → '{IMAGE_SCENES[i]['scene']}'")
 
             zoom_end = 1.05 + (i % 3) * 0.03
             result = subprocess.run(
-                [
-                    ffmpeg, "-y", "-loop", "1", "-i", img_path,
-                    "-vf",
-                    f"zoompan=z='min(1+{ZOOM_SPEED}*on,{zoom_end}):"
-                    f"d={total_frames}:"
-                    f"x='iw/2-(iw/zoom/2)':"
-                    f"y='ih/2-(ih/zoom/2)':"
-                    f"s={TARGET_W}x{TARGET_H}:fps={FPS}",
-                    "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                    "-t", str(dur), clip_path,
-                ],
+                [ffmpeg, "-y", "-loop", "1", "-i", img_path,
+                 "-vf", f"zoompan=z='min(1+{ZOOM_SPEED}*on,{zoom_end}):"
+                        f"d={total_frames}:x='iw/2-(iw/zoom/2)':"
+                        f"y='ih/2-(ih/zoom/2)':s={TARGET_W}x{TARGET_H}:fps={FPS}",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                 "-preset", "ultrafast", "-crf", "28",
+                 "-t", str(dur), clip_path],
                 capture_output=True, timeout=120,
             )
 
             if result.returncode != 0:
-                print(f"      ✗ FFmpeg zoom FAILED: {result.stderr.decode()[:300]}")
+                err = result.stderr.decode()
+                # Skip ffmpeg version header, show actual error
+                tail_lines = err.split('\n')[-10:]
+                print(f"      ✗ FAILED: {' '.join([l for l in tail_lines if 'Error' in l or 'error' in l or 'Invalid' in l or 'Expected' in l])}")
+                print(f"      Last line: {tail_lines[-1][:200]}")
                 continue
             if Path(clip_path).exists():
                 clip_files.append((clip_path, dur))
-            else:
-                print(f"      ✗ Clip not created: {clip_path}")
 
         if len(clip_files) < 2:
-            print("[FATAL] Need >= 2 clips for crossfade. Aborting.")
+            print("[FATAL] Need >= 2 clips. Aborting.")
             return None
 
-        # --- Phase 2: Crossfade concatenation ---
+        # Crossfade
         print(f"      Crossfading {len(clip_files)} clips...")
-
         inputs = []
         for cp, _ in clip_files:
             inputs.extend(["-i", cp])
 
-        # Calculate running durations for xfade offsets
         filter_parts = []
         prev_label = "0:v"
-        running = get_clip_duration(clip_files[0][0])
+        running = _gcd(clip_files[0][0])
 
         for i in range(1, len(clip_files)):
             out_label = f"v{i}" if i < len(clip_files) - 1 else "vout"
@@ -249,26 +211,26 @@ def compose_multi_image_video(image_paths, segment_timings):
                 f"duration={XFADE_DUR}:offset={max(0, offset):.3f}[{out_label}]"
             )
             prev_label = out_label
-            running += get_clip_duration(clip_files[i][0])
+            running += _gcd(clip_files[i][0])
 
         filter_str = ";".join(filter_parts)
         concat_path = str(tmp / "concat.mp4")
 
         subprocess.run(
             [ffmpeg, "-y", *inputs, "-filter_complex", filter_str,
-             "-map", f"[{prev_label}]",
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", concat_path],
+             "-map", f"[{prev_label}]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             "-preset", "ultrafast", "-crf", "28",
+             concat_path],
             capture_output=True, timeout=180,
         )
 
         if not Path(concat_path).exists():
-            print("[FATAL] Crossfade concat failed!")
+            print("[FATAL] Crossfade failed!")
             return None
 
-        # --- Phase 3: Mux with audio ---
+        # Mux audio
         print("      Muxing with audio...")
         final_path = str(OUTPUT_DIR / VIDEO_FILE)
-
         subprocess.run(
             [ffmpeg, "-y", "-i", concat_path, "-i", AUDIO_FILE,
              "-c:v", "copy", "-c:a", "aac", "-shortest",
@@ -285,12 +247,71 @@ def compose_multi_image_video(image_paths, segment_timings):
         return None
 
 
-def get_clip_duration(clip_path: str) -> float:
-    """Get video clip duration."""
-    try:
-        return float(get_audio_duration(clip_path))
-    except Exception:
-        return 15.0
+def compose_silent_video(image_paths):
+    """Create video from images only (no audio)."""
+    from ffmpeg_utils import find_ffmpeg
+    import subprocess, tempfile
+
+    ffmpeg = find_ffmpeg()
+    print("[Video] Composing silent video from images...")
+
+    with tempfile.TemporaryDirectory(prefix="silent_") as tmpdir:
+        tmp = Path(tmpdir)
+        clip_files = []
+
+        for i, img_path in enumerate(image_paths):
+            clip_path = str(tmp / f"clip_{i:02d}.mp4")
+            dur = 15.0  # 15s per image
+            total_frames = int(dur * FPS)
+
+            result = subprocess.run(
+                [ffmpeg, "-y", "-loop", "1", "-i", img_path,
+                 "-vf", f"zoompan=z='min(1+0.002*on,1.1)':d={total_frames}:"
+                        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                        f"s={TARGET_W}x{TARGET_H}:fps={FPS}",
+                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                 "-t", str(dur), clip_path],
+                capture_output=True, timeout=120,
+            )
+            if result.returncode == 0 and Path(clip_path).exists():
+                clip_files.append(clip_path)
+
+        if not clip_files:
+            return None
+
+        concat_path = str(tmp / "concat.mp4")
+        inputs = []
+        for cp in clip_files:
+            inputs.extend(["-i", cp])
+
+        filter_parts = []
+        prev_label = "0:v"
+        for i in range(1, len(clip_files)):
+            out_label = f"v{i}" if i < len(clip_files) - 1 else "vout"
+            filter_parts.append(
+                f"[{prev_label}][{i}:v]xfade=transition=fade:"
+                f"duration=1:offset={max(0, i * 15 - 1)}[{out_label}]"
+            )
+            prev_label = out_label
+
+        subprocess.run(
+            [ffmpeg, "-y", *inputs, "-filter_complex", ";".join(filter_parts),
+             "-map", f"[{prev_label}]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             concat_path],
+            capture_output=True, timeout=180,
+        )
+
+        final_path = str(OUTPUT_DIR / "silent_video.mp4")
+        subprocess.run(
+            [ffmpeg, "-y", "-i", concat_path,
+             "-c:v", "copy", str(OUTPUT_DIR / "silent_video.mp4")],
+            capture_output=True, timeout=60,
+        )
+
+        if Path(final_path).exists():
+            print(f"      ✓ Silent video: {final_path}")
+            return final_path
+        return None
 
 
 # ================================================================
@@ -299,7 +320,7 @@ def get_clip_duration(clip_path: str) -> float:
 
 def send_to_telegram(video_path):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[Telegram] ⚠ No token/chat_id set. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID env vars.")
+        print("[Telegram] ⚠ No token/chat_id. Set env vars TELEGRAM_BOT_TOKEN & TELEGRAM_CHAT_ID.")
         return False
 
     import requests
@@ -319,7 +340,7 @@ def send_to_telegram(video_path):
             resp = requests.post(
                 url,
                 data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "Markdown"},
-                files={"video": vf}, timeout=120,
+                files={"video": vf}, timeout=180,
             )
         if resp.status_code == 200:
             print("[Telegram] ✓ Sent!")
@@ -336,42 +357,84 @@ def send_to_telegram(video_path):
 # ================================================================
 
 async def main():
+    parser = argparse.ArgumentParser(description="🔱 Bhakti Video Generator v2.0")
+    parser.add_argument("--deity", choices=["krishna", "shiva", "ram"], default="shiva")
+    parser.add_argument("--skip-images", action="store_true", help="Skip image generation")
+    parser.add_argument("--skip-voice", action="store_true", help="Skip voiceover generation")
+    parser.add_argument("--skip-subtitles", action="store_true", help="Skip subtitle overlay")
+    parser.add_argument("--skip-telegram", action="store_true", help="Skip Telegram delivery")
+    parser.add_argument("--skip-video", action="store_true", help="Skip video composition (audio only)")
+    parser.add_argument("--output", type=str, default=None, help="Custom output filename")
+    args = parser.parse_args()
+
     print("=" * 55)
-    print("  🔱 BHAKTI VIDEO GENERATOR — Multi-Image Voice-Synced")
-    print("  Shiv Bhakti | Ken Burns | AI Voiceover")
+    print(f"  🔱 BHAKTI VIDEO GENERATOR v2.0")
+    print(f"  Deity: {args.deity} | Skips: "
+          f"{'images' if args.skip_images else ''} "
+          f"{'voice' if args.skip_voice else ''} "
+          f"{'subtitles' if args.skip_subtitles else ''} "
+          f"{'telegram' if args.skip_telegram else ''} "
+          f"{'video' if args.skip_video else ''}")
     print("=" * 55)
 
-    # 1. Images
-    print("\n[1/5] Generating 4 themed devotional images...")
-    image_paths = create_gradient_images()
-    if len(image_paths) < 2:
-        print("[FATAL] Need >= 2 images.")
-        sys.exit(1)
+    image_paths = []
+    video_path = None
 
-    # 2. Audio
-    print("\n[2/5] Generating AI voiceover...")
-    if not await generate_audio():
-        sys.exit(1)
+    # Step 1: Images (optional)
+    if not args.skip_images:
+        print("\n[1/5] Generating 4 themed images...")
+        image_paths = create_gradient_images()
+        if len(image_paths) < 2 and not args.skip_video:
+            print("[FATAL] Need >= 2 images for video.")
+            sys.exit(1)
+    else:
+        print("\n[1/5] ⏭ Images skipped")
 
-    # 3. Timestamps (voice-synced)
-    print("\n[3/5] Calculating voice-synced timestamps...")
-    audio_dur = get_audio_duration(AUDIO_FILE)
-    print(f"      Audio duration: {audio_dur:.2f}s")
-    segment_timings = calc_segment_durations(TEXT_SCRIPT, audio_dur)
-    for i, (start, dur) in enumerate(segment_timings):
-        print(f"      Seg {i+1}: {start:.1f}s → {start+dur:.1f}s ({dur:.1f}s) "
-              f"[{IMAGE_SCENES[i]['scene']}]")
+    # Step 2: Audio (optional)
+    if not args.skip_voice:
+        print("\n[2/5] Generating AI voiceover...")
+        if not await generate_audio():
+            print("[FATAL] Audio generation failed.")
+            sys.exit(1)
+    else:
+        print("\n[2/5] ⏭ Voice skipped")
 
-    # 4. Video
-    print("\n[4/5] Composing Ken Burns video with crossfade...")
-    video_path = compose_multi_image_video(image_paths, segment_timings)
+    # Step 3: Video composition
+    if args.skip_video:
+        print("\n[3/5] ⏭ Video composition skipped (audio-only mode)")
+        if not args.skip_voice:
+            print(f"\n✅ Done! Audio file: {AUDIO_FILE}")
+        else:
+            print("\n⚠ Nothing to generate!")
+        return
+
+    # Step 4: Compose video
+    if image_paths:
+        print("\n[3/5] Calculating voice-synced timestamps...")
+        audio_dur = get_audio_duration(AUDIO_FILE) if not args.skip_voice else len(" ".join(TEXT_SCRIPT)) / 4.0
+        print(f"      Duration: {audio_dur:.2f}s")
+        segment_timings = calc_segment_durations(TEXT_SCRIPT, audio_dur)
+
+        print("\n[4/5] Composing Ken Burns video...")
+        video_path = compose_multi_image_video(image_paths, segment_timings)
+    else:
+        # No images but still need video — compose silent
+        print("\n[3/5] No images — checking for silent video mode...")
+        if args.skip_images:
+            print("      ⚠ Cannot compose video without images. Try without --skip-images")
+            sys.exit(1)
+        video_path = compose_silent_video([])
+
     if not video_path:
         print("[FATAL] Video composition failed.")
         sys.exit(1)
 
-    # 5. Telegram
-    print("\n[5/5] Sending to Telegram...")
-    send_to_telegram(video_path)
+    # Step 5: Telegram (optional)
+    if not args.skip_telegram:
+        print("\n[5/5] Sending to Telegram...")
+        send_to_telegram(video_path)
+    else:
+        print("\n[5/5] ⏭ Telegram skipped")
 
     print("=" * 55)
     print(f"  ✅ DONE! {video_path}")

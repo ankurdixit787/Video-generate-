@@ -2,6 +2,7 @@
 
 import shutil
 import subprocess
+import re
 from pathlib import Path
 
 
@@ -25,20 +26,41 @@ def get_audio_duration(audio_path: str) -> float:
              "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
             capture_output=True, text=True, timeout=10,
         )
-        return float(result.stdout.strip())
+        val = result.stdout.strip()
+        return float(val) if val else 60.0
     except Exception:
-        # Fallback: parse from ffmpeg stderr
-        ffmpeg = find_ffmpeg()
+        pass
+
+    # Fallback: parse from ffmpeg stderr
+    ffmpeg = find_ffmpeg()
+    try:
         result = subprocess.run(
             [ffmpeg, "-i", audio_path, "-f", "null", "-"],
             capture_output=True, text=True, timeout=10,
         )
-        import re
         m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", result.stderr)
         if m:
             h, mi, s = m.groups()
             return float(h) * 3600 + float(mi) * 60 + float(s)
+    except Exception:
+        pass
+
     return 60.0
+
+
+def get_clip_duration(media_path: str) -> float:
+    """Get duration of any video/audio clip using ffprobe."""
+    ffprobe = shutil.which("ffprobe") or "ffprobe"
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", media_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        val = result.stdout.strip()
+        return float(val) if val else 15.0
+    except Exception:
+        return 15.0
 
 
 def mix_audio(music_path: str, voice_path: str, output_path: str,
