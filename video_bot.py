@@ -5,6 +5,8 @@ from moviepy.editor import AudioFileClip, ColorClip
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 
 # ==========================================
 # 1. CONFIGURATION & SCRIPT
@@ -30,7 +32,7 @@ VIDEO_FILE = "bhakti_video.mp4"
 # 2. GENERATE AUDIO (TEXT TO SPEECH)
 # ==========================================
 async def generate_audio():
-    print("🎵 Audio generate ho raha hai...")
+    print("\n🎵 Audio generate ho raha hai...")
     try:
         communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
         await communicate.save(AUDIO_FILE)
@@ -43,81 +45,95 @@ async def generate_audio():
 # ==========================================
 # 3. GENERATE VIDEO (MOVIEPY)
 # ==========================================
-def generate_video():
-    print("🎥 Video generate ho raha hai...")
+def create_video():
+    print("\n🎬 Video ban rahi hai...")
     try:
         if not os.path.exists(AUDIO_FILE):
-            print("❌ Audio file nahi mili, video generate nahi ho sakta.")
+            print("❌ Audio file nahi mili. Video nahi ban sakti.")
             return False
-            
-        # Load Audio
+
         audio_clip = AudioFileClip(AUDIO_FILE)
+        duration = audio_clip.duration
         
-        # Create a blank Orange Color Clip for the duration of the audio (Vertical Shorts format)
-        # Orange color RGB: 255, 165, 0
-        video_clip = ColorClip(size=(1080, 1920), color=(255, 165, 0))
-        video_clip = video_clip.set_duration(audio_clip.duration)
+        # Orange background (R, G, B) = (255, 165, 0)
+        video_clip = ColorClip(size=(1080, 1920), color=(255, 165, 0), duration=duration)
         video_clip = video_clip.set_audio(audio_clip)
         
-        # Export Video
         video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
-        print("✅ Video successfully generate ho gaya!")
+        print("✅ Video successfully ban gayi!")
         return True
     except Exception as e:
         print(f"❌ Video generation mein error: {e}")
         return False
 
 # ==========================================
-# 4. YOUTUBE UPLOAD (GOOGLE API)
+# 4. YOUTUBE UPLOAD (Optional)
 # ==========================================
 def upload_to_youtube():
-    print("☁️ YouTube par upload karne ki koshish kar rahe hain...")
-    client_secrets_file = "client_secret.json"
-    
-    if not os.path.exists(client_secrets_file):
-        print("⚠️ 'client_secret.json' file nahi mili! YouTube upload skip kar rahe hain.")
-        print("💡 Note: Aapki video properly ban chuki hai aur local system par save ho gayi hai.")
-        return
-
+    print("\n🚀 YouTube par upload karne ki koshish kar rahe hain...")
     try:
-        SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
-        flow = InstalledAppFlow.from_client_secrets_file(client_secrets_file, SCOPES)
-        credentials = flow.run_local_server(port=0)
-        youtube = build('youtube', 'v3', credentials=credentials)
+        if not os.path.exists(VIDEO_FILE):
+            print("❌ Video file nahi mili. Upload skip ho raha hai.")
+            return
 
-        request = youtube.videos().insert(
-            part="snippet,status",
-            body={
-                "snippet": {
-                    "categoryId": "22",
-                    "description": "Har Har Mahadev! Bhakti Status shorts.",
-                    "title": "Bholenath Status | Om Namah Shivaya | Har Har Mahadev"
-                },
-                "status": {
-                    "privacyStatus": "private" # Default private rakha hai testing ke liye
-                }
+        SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+        creds = None
+        
+        if os.path.exists('token.json'):
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                if not os.path.exists('client_secret.json'):
+                    print("⚠️ 'client_secret.json' nahi mila! YouTube upload skip kar rahe hain. Video aapki local disk par mil jayegi.")
+                    return
+                flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+            with open('token.json', 'w') as token:
+                token.write(creds.to_json())
+
+        youtube = build('youtube', 'v3', credentials=creds)
+
+        request_body = {
+            'snippet': {
+                'title': 'Om Namah Shivaya - Bholenath Status',
+                'description': 'Har Har Mahadev. Shiv bhakti status.',
+                'tags': ['shiv', 'mahadev', 'bhakti', 'status', 'shorts'],
+                'categoryId': '22'
             },
-            media_body=MediaFileUpload(VIDEO_FILE, chunksize=-1, resumable=True)
+            'status': {
+                'privacyStatus': 'private',
+                'selfDeclaredMadeForKids': False
+            }
+        }
+
+        media_file = MediaFileUpload(VIDEO_FILE, chunksize=-1, resumable=True)
+        request = youtube.videos().insert(
+            part=','.join(request_body.keys()),
+            body=request_body,
+            media_body=media_file
         )
         response = request.execute()
-        print(f"✅ Video successfully YouTube par upload ho gayi! Video ID: {response.get('id')}")
+        print(f"✅ Video successfully uploaded! Video ID: {response['id']}")
+
     except Exception as e:
-        print(f"❌ YouTube upload mein error aayi: {e}")
+        print(f"⚠️ YouTube upload mein error aayi (lekin video ban chuki hai, koi tension nahi): {e}")
 
 # ==========================================
-# 5. MAIN EXECUTION (NON-STOP)
+# 5. MAIN EXECUTION
 # ==========================================
 async def main():
     print("🚀 Script start ho rahi hai...")
     audio_success = await generate_audio()
     
     if audio_success:
-        video_success = generate_video()
+        video_success = create_video()
         if video_success:
             upload_to_youtube()
-            
-    print("🎉 Process complete ho gaya! Script bina crash huye chal gayi.")
+    
+    print("\n🎉 Process complete ho gaya!")
 
 if __name__ == "__main__":
-    # Handle async loop gracefully
     asyncio.run(main())
