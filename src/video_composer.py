@@ -107,11 +107,12 @@ class VideoComposer:
 
             for i, img_path in enumerate(image_paths):
                 if not Path(img_path).exists():
+                    logger.warning(f"Image not found, skipping: {img_path}")
                     continue
 
                 clip_path = str(tmp / f"clip_{i:03d}.mp4")
                 # Ken Burns: slow zoom from 1.0 to 1.15
-                subprocess.run(
+                result = subprocess.run(
                     [ffmpeg, "-y", "-loop", "1", "-i", img_path,
                      "-vf", (
                          f"zoompan=z='min(1+{zoom_speed}*on,1.15)':"
@@ -124,8 +125,14 @@ class VideoComposer:
                      "-t", str(clip_duration), clip_path],
                     capture_output=True, timeout=60
                 )
-                clip_files.append(clip_path)
-                logger.debug(f"Ken Burns clip {i+1}/{num_images}: {clip_path}")
+                if result.returncode != 0:
+                    logger.error(f"FFmpeg ken burns failed for {img_path}: {result.stderr.decode()[:300]}")
+                    continue
+                if Path(clip_path).exists():
+                    clip_files.append(clip_path)
+                    logger.debug(f"Ken Burns clip {i+1}/{num_images}: {clip_path}")
+                else:
+                    logger.error(f"Ken Burns clip not created: {clip_path}")
 
             if not clip_files:
                 raise RuntimeError("No valid image clips to compose")
