@@ -6,7 +6,7 @@ from moviepy.editor import AudioFileClip, ImageClip
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 
 # ==========================================
@@ -30,73 +30,66 @@ VIDEO_FILE = "bhakti_video.mp4"
 BG_IMAGE_FILE = "background_image.jpg"
 
 # Reliable direct image URL (Lord Shiva Statue on Wikimedia Commons)
-IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg"
+IMAGE_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Shiva_Bangalore.jpg/800px-Shiva_Bangalore.jpg"
 
 # ==========================================
-# 2. AUDIO GENERATION
+# 2. AUDIO GENERATION (TTS)
 # ==========================================
 async def generate_audio():
-    print("\n🎵 Generating audio...")
+    print("Audio generate ho raha hai...")
     communicate = edge_tts.Communicate(TEXT_SCRIPT, VOICE)
     await communicate.save(AUDIO_FILE)
-    print(f"✅ Audio saved as {AUDIO_FILE}")
+    print("Audio successfully save ho gaya:", AUDIO_FILE)
 
 # ==========================================
-# 3. DOWNLOAD BACKGROUND IMAGE
+# 3. IMAGE DOWNLOAD (WITH USER-AGENT FIX)
 # ==========================================
 def download_image():
-    print("\n🖼️ Downloading background image...")
-    req = urllib.request.Request(
-        IMAGE_URL, 
-        data=None, 
-        headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-    )
-    with urllib.request.urlopen(req) as response, open(BG_IMAGE_FILE, 'wb') as out_file:
-        data = response.read()
-        out_file.write(data)
-    print(f"✅ Background image saved as {BG_IMAGE_FILE}")
+    print("Image download ho rahi hai...")
+    try:
+        # Wikipedia/Wikimedia blocks default python user agents. We must pass a standard web browser User-Agent.
+        req = urllib.request.Request(
+            IMAGE_URL, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        )
+        with urllib.request.urlopen(req) as response, open(BG_IMAGE_FILE, 'wb') as out_file:
+            data = response.read()
+            out_file.write(data)
+        print("Image successfully download ho gayi:", BG_IMAGE_FILE)
+    except Exception as e:
+        print(f"Error downloading image: {e}")
+        raise
 
 # ==========================================
-# 4. CREATE VIDEO
+# 4. VIDEO CREATION
 # ==========================================
 def create_video():
-    print("\n🎬 Creating video...")
-    
-    # Load the generated audio
-    audio_clip = AudioFileClip(AUDIO_FILE)
-    
-    # Load the downloaded image
-    image_clip = ImageClip(BG_IMAGE_FILE)
-    
-    # Crucial Step: Set the duration of the image to match the audio duration
-    video_clip = image_clip.set_duration(audio_clip.duration)
-    
-    # Attach audio to the video
-    video_clip = video_clip.set_audio(audio_clip)
-    
-    # Write the result to a file.
-    # fps and codecs are required to render properly on all players.
-    video_clip.write_videofile(
-        VIDEO_FILE, 
-        fps=24, 
-        codec="libx264", 
-        audio_codec="aac"
-    )
-    print(f"\n✅ Video saved successfully as {VIDEO_FILE}")
+    print("Video create ho rahi hai...")
+    try:
+        audio_clip = AudioFileClip(AUDIO_FILE)
+        image_clip = ImageClip(BG_IMAGE_FILE)
+        
+        video_clip = image_clip.set_duration(audio_clip.duration)
+        video_clip = video_clip.set_audio(audio_clip)
+        
+        video_clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+        print("Video successfully ban gayi:", VIDEO_FILE)
+    except Exception as e:
+        print(f"Video banane mein error aayi: {e}")
 
 # ==========================================
-# MAIN EXECUTION
+# 5. MAIN FUNCTION
 # ==========================================
-if __name__ == "__main__":
-    # 1. Generate Voice Audio
-    asyncio.run(generate_audio())
-    
-    # 2. Download Background Image
+def main():
+    # 1. Download image first with proper headers
     download_image()
     
-    # 3. Create Final Video
-    create_video()
+    # 2. Generate Audio
+    asyncio.run(generate_audio())
     
-    print("\n🎉 Process completed successfully! Check the generated video file.")
+    # 3. Combine to Video
+    create_video()
+    print("Process complete! Check", VIDEO_FILE)
+
+if __name__ == "__main__":
+    main()
