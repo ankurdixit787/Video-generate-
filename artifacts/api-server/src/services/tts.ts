@@ -1,64 +1,68 @@
-import { execSync, spawnSync } from "child_process";
+import { spawnSync, execSync } from "child_process";
 import fs from "fs";
 import { logger } from "../lib/logger";
 
-export async function generateTTS(text: string, outputPath: string): Promise<number> {
-  const wavPath = outputPath.replace(/\.mp3$/, ".wav");
-  const safeText = text.replace(/"/g, "'").replace(/`/g, "'").replace(/\\/g, "");
+const PYTHON_PATHS = [
+  "/home/runner/.local/lib/python3.11/site-packages",
+  "/usr/lib/python3/dist-packages",
+  "/home/runner/.local/lib/python3.12/site-packages",
+];
 
-  const espeakBin = "/nix/store/02sy4i533rf5zcqal2yblk6mcyfpdsh8-espeak-ng-1.51.1/bin/espeak-ng";
-
-  const gttsScript = `
+const GTTS_SCRIPT = `
 import sys
+for p in ${JSON.stringify(PYTHON_PATHS)}:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 from gtts import gTTS
 text = sys.argv[1]
-lang = 'hi'
-tts = gTTS(text=text, lang=lang, slow=False)
-tts.save(sys.argv[2])
+out  = sys.argv[2]
+tts  = gTTS(text=text, lang='hi', slow=False)
+tts.save(out)
+import os
+print(os.path.getsize(out))
 `.trim();
 
-  const scriptPath = "/tmp/gtts_run.py";
-  fs.writeFileSync(scriptPath, gttsScript);
+const SCRIPT_PATH = "/tmp/_gtts_runner.py";
 
-  const result = spawnSync("python3", [scriptPath, safeText, outputPath], {
-    timeout: 30000,
-    encoding: "utf-8",
-  });
-
-  if (result.status === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 500) {
-    const dur = getAudioDuration(outputPath);
-    logger.info({ dur, text: text.slice(0, 40) }, "gTTS audio generated");
-    return dur;
-  }
-
-  logger.warn({ stderr: result.stderr?.slice(0, 200) }, "gTTS failed, trying espeak-ng");
-
-  if (fs.existsSync(espeakBin)) {
-    spawnSync(espeakBin, ["-v", "hi", "-s", "140", "-w", wavPath, safeText], { timeout: 20000 });
-    if (fs.existsSync(wavPath) && fs.statSync(wavPath).size > 100) {
-      execSync(`ffmpeg -y -i "${wavPath}" -codec:a libmp3lame -qscale:a 2 "${outputPath}" 2>/dev/null`);
-      try { fs.unlinkSync(wavPath); } catch {}
-      const dur = getAudioDuration(outputPath);
-      logger.info({ dur }, "espeak-ng audio generated");
-      return dur;
-    }
-  }
-
-  logger.warn("All TTS failed, generating silence");
-  const words = safeText.split(/\s+/).length;
-  const silenceDur = Math.max(3, Math.round(words * 0.4));
-  execSync(`ffmpeg -y -f lavfi -i "aevalsrc=0:s=44100:d=${silenceDur}" -c:a libmp3lame "${outputPath}" 2>/dev/null`);
-  return silenceDur;
+function ensureScript(): void {
+  fs.writeFileSync(SCRIPT_PATH, GTTS_SCRIPT);
 }
 
-export function getAudioDuration(audioPath: string): number {
+export function getAudioDuration(p: string): number {
   try {
     const out = execSync(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`,
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${p}"`,
       { timeout: 10000 }
     ).toString().trim();
     return parseFloat(out) || 3;
-  } catch {
-    return 3;
+  } catch { return 3; }
+}
+
+export async function generateTTS(text: string, outputPath: string): Promise<number> {
+  ensureScript();
+  const safe = text.replace(/"/g, "'").replace(/\\/g, "").trim().slice(0, 500);
+
+  logger.info({ text: safe.slice(0, 60) }, "TTS: calling gTTS");
+
+  const r = spawnSync("python3", [SCRIPT_PATH, safe, outputPath], {
+    timeout: 40000, encoding: "utf-8",
+  });
+
+  if (r.status === 0 && fs.existsSync(outputPath)) {
+    const size = fs.statSync(outputPath).size;
+    if (size > 1000) {
+      const dur = getAudioDuration(outputPath);
+      logger.info({ dur, size, text: safe.slice(0, 40) }, "TTS: gTTS OK");
+      return dur;
+    }
   }
+  logger.warn({ stderr: (r.stderr || "").slice(0, 300) }, "TTS: gTTS failed, using silence");
+
+  const words = safe.split(/\s+/).length;
+  const silDur = Math.max(4, Math.round(words * 0.45));
+  execSync(
+    `ffmpeg -y -f lavfi -i "aevalsrc=0:s=44100:d=${silDur}" -c:a libmp3lame -q:a 5 "${outputPath}" 2>/dev/null`,
+    { timeout: 15000 }
+  );
+  return silDur;
 }
