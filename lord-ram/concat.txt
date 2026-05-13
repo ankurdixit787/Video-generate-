@@ -1,0 +1,5 @@
+file '/home/ankurdixitd/bhakti-videos/lord-ram/clip_ram_01.mp4'
+file '/home/ankurdixitd/bhakti-videos/lord-ram/clip_ram_02.mp4'
+file '/home/ankurdixitd/bhakti-videos/lord-ram/clip_ram_03.mp4'
+file '/home/ankurdixitd/bhakti-videos/lord-ram/clip_ram_04.mp4'
+file '/home/ankurdixitd/bhakti-videos/lord-ram/clip_ram_05.mp4'
