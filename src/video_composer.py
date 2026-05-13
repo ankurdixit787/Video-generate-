@@ -1,10 +1,14 @@
 """
 Video Composer - Combines voiceover, images, subtitles, and music into final MP4.
-Uses FFmpeg for Ken Burns effects and crossfade transitions.
+Uses FFmpeg for Ken Burns effects and smooth crossfade transitions.
 """
 
-from pathlib import Path
+import shutil
+import re
 import subprocess
+import tempfile
+from pathlib import Path
+
 import yaml
 from loguru import logger
 
@@ -69,13 +73,11 @@ class VideoComposer:
                           output_path: str | None = None,
                           zoom_speed: float = 0.002,
                           crossfade_duration: float = 1.0) -> str:
-        """Compose video with Ken Burns zoom effect on images using FFmpeg.
+        """Compose video with Ken Burns zoom + crossfade using FFmpeg.
 
-        Each image gets a slow zoom-in effect, then clips are concatenated with crossfade.
+        Each image gets a slow zoom-in, clips are crossfaded, audio is muxed.
+        Everything runs through 2 FFmpeg steps: zoom clips → crossfade+audio.
         """
-        import tempfile
-        import re
-
         ffmpeg = find_ffmpeg()
         if output_path is None:
             output_path = str(self.output_dir / "output.mp4")
@@ -114,6 +116,7 @@ class VideoComposer:
                          f"s={w}x{h}:fps={self.fps}"
                      ),
                      "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                     "-preset", "ultrafast", "-crf", "28",
                      "-t", str(clip_duration), clip_path],
                     capture_output=True, timeout=60,
                 )
@@ -140,7 +143,6 @@ class VideoComposer:
 
             if n == 1:
                 # Single clip — no crossfade needed
-                import shutil
                 shutil.copy2(clip_files[0], concat_video)
             else:
                 # Build filter_complex for xfade transitions
@@ -166,17 +168,30 @@ class VideoComposer:
 
                 filter_str = ";".join(filter_parts)
 
-                subprocess.run(
-                    [*[ffmpeg, "-y"], *inputs,
+                result = subprocess.run(
+                    [ffmpeg, "-y", *inputs,
                      "-filter_complex", filter_str,
                      "-map", f"[{prev_label}]",
                      "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                     concat_path],
+                     "-preset", "ultrafast", "-crf", "28",
+                     concat_video],
                     capture_output=True, timeout=180,
                 )
 
+                if result.returncode != 0:
+                    stderr = result.stderr.decode()[:500]
+                    raise RuntimeError(
+                        f"Crossfade concat FFmpeg failed (rc={result.returncode}): {stderr}"
+                    )
+
+                if not Path(concat_video).exists():
+                    raise RuntimeError(
+                        f"Crossfade concat failed — output not created. "
+                        f"Filter: {filter_str}"
+                    )
+
             # Add audio
-            subprocess.run(
+            result = subprocess.run(
                 [ffmpeg, "-y",
                  "-i", concat_video, "-i", audio_path,
                  "-c:v", "copy", "-c:a", "aac",
@@ -186,11 +201,15 @@ class VideoComposer:
                 capture_output=True, timeout=120,
             )
 
+            if result.returncode != 0:
+                stderr = result.stderr.decode()[:500]
+                raise RuntimeError(f"Audio mux FFmpeg failed (rc={result.returncode}): {stderr}")
+
         if output_path.exists():
             size_mb = output_path.stat().st_size / (1024 * 1024)
             logger.success(f"Ken Burns video rendered: {output_path} ({size_mb:.1f}MB)")
             return str(output_path)
-        raise RuntimeError("Video rendering failed")
+        raise RuntimeError("Video rendering failed — output file missing")
 
     def _get_audio_duration_ffmpeg(self, audio_path: str) -> float:
         """Get audio duration using ffprobe."""
@@ -199,9 +218,8 @@ class VideoComposer:
 
     def _get_clip_duration(self, clip_path: str) -> float:
         """Get duration of a video clip."""
-        ffprobe = shutil.which("ffprobe") or "ffprobe"  # type: ignore
+        ffprobe = shutil.which("ffprobe") or "ffprobe"
         try:
-            import subprocess
             result = subprocess.run(
                 [ffprobe, "-v", "error", "-show_entries", "format=duration",
                  "-of", "default=noprint_wrappers=1:nokey=1", clip_path],

@@ -52,61 +52,85 @@ XFADE_DUR = 1.0
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-SHIVA_COLORS = {"top": (75, 0, 130), "bottom": (255, 140, 0)}
-
 
 # ================================================================
 # IMAGE GENERATION
 # ================================================================
 
-def create_gradient_images():
-    from PIL import Image, ImageDraw, ImageFont
-    import numpy as np
+def generate_ai_images():
+    """Generate HD religious images using Pollinations.ai (free, no API key)."""
+    import requests
+    from PIL import Image
+    from io import BytesIO
 
     w, h = TARGET_W, TARGET_H
-    tc, bc = SHIVA_COLORS["top"], SHIVA_COLORS["bottom"]
     paths = []
 
-    try:
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 70
-        )
-    except Exception:
-        font = ImageFont.load_default()
+    # Detailed English prompts for each scene — better results
+    AI_PROMPTS = [
+        "Lord Shiva sitting on Mount Kailash in meditation, trident beside him, "
+        "divine glow around him, Himalayan mountains background, celestial clouds, "
+        "hindu devotional art, dramatic lighting, spiritual, 4k",
 
-    for i, scene_data in enumerate(IMAGE_SCENES):
+        "Lord Shiva as Gangadhar, river Ganga flowing from his matted hair, "
+        "blue skin, crescent moon, sacred water pouring on shiva linga, "
+        "devotees doing abhishekam ceremony, divine atmosphere, hindu art",
+
+        "Lord Shiva as Nataraja dancing the cosmic Tandava dance, ring of fire around him, "
+        "four arms in dynamic pose, damaru and agni, cosmic universe background, "
+        "golden aura, hindu mythology art, dramatic, vibrant colors",
+
+        "Sacred Om symbol with panchakshara mantra, golden divine light radiating, "
+        "lotus flowers, spiritual meditation scene, cosmic energy, "
+        "hindu devotional background, peaceful, glowing, 4k",
+    ]
+
+    for i, (scene_data, prompt) in enumerate(zip(IMAGE_SCENES, AI_PROMPTS)):
         path = f"devotional_img_{i:02d}.png"
 
-        gradient = np.zeros((h, w, 3), dtype=np.uint8)
-        for y in range(h):
-            ratio = y / h
-            gradient[y, :, 0] = int(tc[0] * (1 - ratio) + bc[0] * ratio)
-            gradient[y, :, 1] = int(tc[1] * (1 - ratio) + bc[1] * ratio)
-            gradient[y, :, 2] = int(tc[2] * (1 - ratio) + bc[2] * ratio)
+        print(f"      🎨 Generating image {i+1}/4: {scene_data['scene']}")
+        print(f"         Prompt: {prompt[:60]}...")
 
-        img = Image.fromarray(gradient)
-        draw = ImageDraw.Draw(img)
+        try:
+            # Pollinations.ai — free, no API key required
+            url = (
+                f"https://image.pollinations.ai/prompt/"
+                f"{requests.utils.quote(prompt)}"
+                f"?width={w}&height={h}&nologo=true&seed={i + 42}"
+            )
+            r = requests.get(url, timeout=120)
 
-        cx, cy = w // 2, h // 3
-        for radius in range(240, 60, -20):
-            alpha = int(80 + 175 * (1 - radius / 240))
-            draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius],
-                         outline=(alpha, alpha, alpha), width=2)
+            if r.status_code != 200 or 'image' not in r.headers.get('content-type', ''):
+                print(f"      ✗ Pollinations returned {r.status_code}, trying fallback...")
+                raise RuntimeError(f"Pollinations failed: {r.status_code}")
 
-        draw.text((cx, cy - 50), scene_data["mantra"], fill=(255, 255, 220),
-                  anchor="mm", font=font)
-        draw.text((cx, cy + 60), f"--- {scene_data['scene']} ---",
-                  fill=(255, 215, 0), anchor="mm")
-        draw.text((cx, h * 2 // 3), scene_data["sub"],
-                  fill=(240, 240, 240), anchor="mm")
-        draw.text((w - 60, h - 40), f"{i+1} / {len(IMAGE_SCENES)}",
-                  fill=(200, 200, 200), anchor="mm")
-        draw.text((cx, h - 60), "OM NAMAH SHIVAYA", fill=(255, 255, 200),
-                  anchor="mm")
+            img = Image.open(BytesIO(r.content))
 
-        img.save(path, quality=95)
-        paths.append(path)
-        print(f"      ✓ Image {i+1}/4: {scene_data['scene']} → {path}")
+            # Upscale to exact target resolution using LANCZOS
+            img = img.resize((w, h), Image.LANCZOS)
+
+            img.save(path, quality=95, optimize=True)
+            paths.append(path)
+            file_size = img.fp.tell() if hasattr(img, 'fp') and img.fp else 0
+            print(f"      ✓ Image {i+1}/4: {img.size} → {path}")
+
+        except Exception as e:
+            print(f"      ✗ AI generation failed for image {i+1}: {e}")
+            # Fallback: create a simple colored image so pipeline doesn't break
+            from PIL import Image as FallbackImage, ImageDraw, ImageFont
+            fallback = FallbackImage.new("RGB", (w, h), (25, 25, 50))
+            draw = ImageDraw.Draw(fallback)
+            try:
+                font = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf", 60
+                )
+            except Exception:
+                font = ImageFont.load_default()
+            draw.text((w//2, h//2), f"{scene_data['mantra']}\n{scene_data['scene']}",
+                      fill=(200, 200, 200), anchor="mm", font=font, align="center")
+            fallback.save(path, quality=85)
+            paths.append(path)
+            print(f"      ⚠ Fallback image used for {scene_data['scene']}")
 
     return paths
 
@@ -216,27 +240,33 @@ def compose_multi_image_video(image_paths, segment_timings):
         filter_str = ";".join(filter_parts)
         concat_path = str(tmp / "concat.mp4")
 
-        subprocess.run(
+        result = subprocess.run(
             [ffmpeg, "-y", *inputs, "-filter_complex", filter_str,
              "-map", f"[{prev_label}]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
              "-preset", "ultrafast", "-crf", "28",
              concat_path],
             capture_output=True, timeout=180,
         )
+        if result.returncode != 0:
+            print(f"      ✗ Crossfade FAILED: {result.stderr.decode()[:400]}")
+            return None
 
         if not Path(concat_path).exists():
-            print("[FATAL] Crossfade failed!")
+            print("[FATAL] Crossfade failed — output missing!")
             return None
 
         # Mux audio
         print("      Muxing with audio...")
         final_path = str(OUTPUT_DIR / VIDEO_FILE)
-        subprocess.run(
+        result = subprocess.run(
             [ffmpeg, "-y", "-i", concat_path, "-i", AUDIO_FILE,
              "-c:v", "copy", "-c:a", "aac", "-shortest",
              "-map", "0:v:0", "-map", "1:a:0", final_path],
             capture_output=True, timeout=60,
         )
+        if result.returncode != 0:
+            print(f"      ✗ Audio mux FAILED: {result.stderr.decode()[:300]}")
+            return None
 
         if Path(final_path).exists():
             size_mb = os.path.getsize(final_path) / (1024 * 1024)
@@ -383,7 +413,7 @@ async def main():
     # Step 1: Images (optional)
     if not args.skip_images:
         print("\n[1/5] Generating 4 themed images...")
-        image_paths = create_gradient_images()
+        image_paths = generate_ai_images()
         if len(image_paths) < 2 and not args.skip_video:
             print("[FATAL] Need >= 2 images for video.")
             sys.exit(1)
