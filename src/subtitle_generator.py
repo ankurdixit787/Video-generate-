@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from loguru import logger
 
-from ffmpeg_utils import find_ffmpeg, get_audio_duration
+from src.ffmpeg_utils import find_ffmpeg, get_audio_duration
 
 
 class SubtitleGenerator:

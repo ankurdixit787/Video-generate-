@@ -145,5 +145,5 @@ class DevotionalPipeline:
     @staticmethod
     def _get_audio_duration(audio_path: str) -> float:
         """Get audio duration in seconds."""
-        from ffmpeg_utils import get_audio_duration
+        from src.ffmpeg_utils import get_audio_duration
         return get_audio_duration(audio_path)

@@ -62,27 +62,31 @@ def generate_ai_images():
     import requests
     from PIL import Image
     from io import BytesIO
+    import cv2
+    import numpy as np
 
     w, h = TARGET_W, TARGET_H
     paths = []
 
-    # Detailed English prompts for each scene — better results
+    # More detailed prompts for better quality
     AI_PROMPTS = [
-        "Lord Shiva sitting on Mount Kailash in meditation, trident beside him, "
-        "divine glow around him, Himalayan mountains background, celestial clouds, "
-        "hindu devotional art, dramatic lighting, spiritual, 4k",
+        "Lord Shiva sitting on Mount Kailash in deep meditation, trident beside him, "
+        "divine blue glow around him, Himalayan snow peaks background, celestial clouds, "
+        "stars in sky, hindu devotional art, cinematic dramatic lighting, 8k, highly detailed, "
+        "photorealistic, sacred atmosphere",
 
-        "Lord Shiva as Gangadhar, river Ganga flowing from his matted hair, "
-        "blue skin, crescent moon, sacred water pouring on shiva linga, "
-        "devotees doing abhishekam ceremony, divine atmosphere, hindu art",
+        "Lord Shiva as Gangadhar, river Ganga flowing from his matted jata hair, "
+        "beautiful blue skin, crescent moon on head, sacred water pouring on shiva lingam, "
+        "devotees doing abhishekam ceremony, golden divine light, hindu art masterpiece, "
+        "8k, highly detailed, photorealistic",
 
-        "Lord Shiva as Nataraja dancing the cosmic Tandava dance, ring of fire around him, "
-        "four arms in dynamic pose, damaru and agni, cosmic universe background, "
-        "golden aura, hindu mythology art, dramatic, vibrant colors",
+        "Lord Shiva as Nataraja performing cosmic Tandava dance, ring of blue fire around him, "
+        "four arms in dynamic pose holding damaru and agni, cosmic universe background, "
+        "golden divine aura, hindu mythology art, 8k, highly detailed, dramatic lighting",
 
-        "Sacred Om symbol with panchakshara mantra, golden divine light radiating, "
-        "lotus flowers, spiritual meditation scene, cosmic energy, "
-        "hindu devotional background, peaceful, glowing, 4k",
+        "Sacred Om symbol with panchakshara mantra glowing golden light, "
+        "lotus flowers surrounding, spiritual meditation scene, cosmic energy radiating, "
+        "hindu devotional art, peaceful divine atmosphere, 8k, highly detailed, photorealistic",
     ]
 
     for i, (scene_data, prompt) in enumerate(zip(IMAGE_SCENES, AI_PROMPTS)):
@@ -106,12 +110,30 @@ def generate_ai_images():
 
             img = Image.open(BytesIO(r.content))
 
-            # Upscale to exact target resolution using LANCZOS
+            # High quality resize using LANCZOS
             img = img.resize((w, h), Image.LANCZOS)
 
-            img.save(path, quality=95, optimize=True)
+            # Advanced enhancement: sharpen + contrast + upscale quality
+            img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
+            # Unsharp mask for sharpness
+            blurred = cv2.GaussianBlur(img_cv, (0, 0), 2.0)
+            sharpened = cv2.addWeighted(img_cv, 1.5, blurred, -0.5, 0)
+
+            # CLAHE for contrast enhancement
+            lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
+            l_ch, a_ch, b_ch = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            l_ch = clahe.apply(l_ch)
+            enhanced = cv2.merge([l_ch, a_ch, b_ch])
+            enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+            # Convert back to PIL
+            img = Image.fromarray(cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB))
+
+            # Save at highest quality
+            img.save(path, quality=95, optimize=False)
             paths.append(path)
-            file_size = img.fp.tell() if hasattr(img, 'fp') and img.fp else 0
             print(f"      ✓ Image {i+1}/4: {img.size} → {path}")
 
         except Exception as e:
@@ -198,7 +220,7 @@ def compose_multi_image_video(image_paths, segment_timings):
                         f"d={total_frames}:x='iw/2-(iw/zoom/2)':"
                         f"y='ih/2-(ih/zoom/2)':s={TARGET_W}x{TARGET_H}:fps={FPS}",
                  "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                 "-preset", "ultrafast", "-crf", "28",
+                 "-preset", "medium", "-crf", "23", "-b:v", "5000k",
                  "-t", str(dur), clip_path],
                 capture_output=True, timeout=120,
             )
@@ -243,7 +265,7 @@ def compose_multi_image_video(image_paths, segment_timings):
         result = subprocess.run(
             [ffmpeg, "-y", *inputs, "-filter_complex", filter_str,
              "-map", f"[{prev_label}]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-             "-preset", "ultrafast", "-crf", "28",
+             "-preset", "medium", "-crf", "23", "-b:v", "5000k",
              concat_path],
             capture_output=True, timeout=180,
         )

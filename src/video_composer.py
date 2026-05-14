@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 from loguru import logger
 
-from ffmpeg_utils import find_ffmpeg
+from src.ffmpeg_utils import find_ffmpeg
 
 
 class VideoComposer:
@@ -116,7 +116,7 @@ class VideoComposer:
                          f"s={w}x{h}:fps={self.fps}"
                      ),
                      "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                     "-preset", "ultrafast", "-crf", "28",
+                     "-preset", "medium", "-crf", "23", "-b:v", "5000k",
                      "-t", str(clip_duration), clip_path],
                     capture_output=True, timeout=60,
                 )
@@ -173,7 +173,7 @@ class VideoComposer:
                      "-filter_complex", filter_str,
                      "-map", f"[{prev_label}]",
                      "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                     "-preset", "ultrafast", "-crf", "28",
+                     "-preset", "medium", "-crf", "23", "-b:v", "5000k",
                      concat_video],
                     capture_output=True, timeout=180,
                 )
@@ -213,7 +213,7 @@ class VideoComposer:
 
     def _get_audio_duration_ffmpeg(self, audio_path: str) -> float:
         """Get audio duration using ffprobe."""
-        from ffmpeg_utils import get_audio_duration
+        from src.ffmpeg_utils import get_audio_duration
         return get_audio_duration(audio_path)
 
     def _get_clip_duration(self, clip_path: str) -> float:
