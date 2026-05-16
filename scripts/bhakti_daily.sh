@@ -233,17 +233,68 @@ fi
 VIDEO_TRIM="$OUTDIR/video_trim.mp4"
 ffmpeg -y -i "$VIDEO_NO_SOUND" -t 30 -c copy "$VIDEO_TRIM" 2>/dev/null
 
-# ── Step 3: Download bhajan and add audio ────────────────────────────────
+# ── Step 3: Download best viral Shorts bhajan ────────────────────────────
 echo ""
-echo "[3/4] Downloading $DEITY bhajan..."
+echo "[3/4] Finding best viral Shorts for $DEITY..."
 
 BHAJAN="$OUTDIR/bhajan.mp3"
-yt-dlp --quiet --no-warnings \
-  "ytsearch5:${QUERY}" \
-  --max-downloads 1 --playlist-end 1 \
-  -x --audio-format mp3 \
-  --postprocessor-args "-ss 0 -t 35" \
-  -o "$BHAJAN" 2>/dev/null
+export BHAJAN_PATH="$BHAJAN"
+export DEITY
+export QUERY
+
+# Search top 5 viral Shorts, pick the best (short + high views)
+$PY3 << 'PYEOF'
+import subprocess, json, sys, os
+
+DEITY = os.environ.get("DEITY", "Vishnu")
+QUERY = os.environ.get("QUERY", f"{DEITY} bhajan viral shorts")
+
+# Search for top results
+result = subprocess.run(
+    ["yt-dlp", "--dump-json", "--no-warnings",
+     f"ytsearch5:{QUERY}"],
+    capture_output=True, text=True, timeout=30
+)
+
+lines = result.stdout.strip().split("\n")
+candidates = []
+for line in lines:
+    if not line.strip():
+        continue
+    try:
+        data = json.loads(line)
+        dur = data.get("duration", 999)
+        views = data.get("view_count", 0)
+        title = data.get("title", "?")
+        vid = data["id"]
+        # Prefer videos under 60s (Shorts), but accept up to 90s
+        if dur <= 90:
+            candidates.append((dur, -views, title, vid))
+    except:
+        pass
+
+if not candidates:
+    print("NO_SHORTS_FOUND")
+    sys.exit(1)
+
+# Sort by views (highest first), pick best
+candidates.sort()
+dur, nviews, title, vid = candidates[0]
+views = -nviews
+url = f"https://youtu.be/{vid}"
+print(f"🎵 [{dur}s | {views:,} views] {title}")
+print(f"   {url}")
+
+# Download audio (30-35s)
+subprocess.run([
+    "yt-dlp", "--quiet", "--no-warnings",
+    url,
+    "-x", "--audio-format", "mp3",
+    "--postprocessor-args", "-ss 0 -t 35",
+    "-o", os.environ["BHAJAN_PATH"]
+], timeout=60)
+print("AUDIO_OK")
+PYEOF
 
 VIDEO_FINAL="$OUTDIR/bhakti_${DEITY,,}.mp4"
 
