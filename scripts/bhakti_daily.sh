@@ -7,6 +7,9 @@ set -uo pipefail
 source ~/.hermes/.env
 export OPENROUTER_API_KEY
 
+# Use hardcoded python3 path for cron compatibility
+PY3="/usr/bin/python3"
+
 DEITY_MAP=(
   [0]="Shiva"
   [1]="Hanuman"
@@ -101,7 +104,7 @@ for i in 0 1; do
     }")
 
   # Extract base64 image from response
-  B64=$(echo "$RESPONSE" | python3 -c "
+  B64=$(echo "$RESPONSE" | $PY3 -c "
 import sys,json,re
 data=json.load(sys.stdin)
 msg=data.get('choices',[{}])[0].get('message',{})
@@ -129,7 +132,7 @@ else: print('NO_IMAGE')
     # Fallback: try Wikimedia Commons
     SEARCH=$(echo "$DEITY hindu god statue" | sed 's/ /+/g')
     IMG_URL=$(curl -s "https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${SEARCH}&srnamespace=6&format=json&srlimit=3" | \
-      python3 -c "import sys,json; d=json.load(sys.stdin); items=d.get('query',{}).get('search',[]); print(items[0]['title'] if items else 'NONE')")
+      $PY3 -c "import sys,json; d=json.load(sys.stdin); items=d.get('query',{}).get('search',[]); print(items[0]['title'] if items else 'NONE')")
     if [ "$IMG_URL" != "NONE" ]; then
       curl -s "https://commons.wikimedia.org/wiki/Special:FilePath/${IMG_URL}?width=1024" -o "$OUTFILE"
     fi
@@ -149,7 +152,7 @@ if [ "$IMG_COUNT" -lt 1 ]; then
   echo "❌ No images generated, aborting"
   rm -rf "$OUTDIR"
   # Fallback: send Telegram notification
-  python3 -c "
+  $PY3 -c "
 import requests
 requests.post('https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage', json={
   'chat_id': '5909464423',
@@ -196,7 +199,7 @@ fi
 # Crossfade clips if we have 2
 VIDEO_NO_SOUND="$OUTDIR/video_nosound.mp4"
 if [ "$CLIP_NUM" -ge 2 ]; then
-  python3 -c "
+  $PY3 -c "
 import subprocess, os
 clips = sorted(['$CLIP_DIR/clip_1.mp4', '$CLIP_DIR/clip_2.mp4'])
 inputs = []
@@ -286,7 +289,7 @@ export DEITY
 export TITLE
 export TAG
 
-python3 << 'PYEOF'
+$PY3 << 'PYEOF'
 import os, json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
