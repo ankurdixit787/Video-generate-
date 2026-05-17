@@ -81,6 +81,10 @@ PROMPTS=(
 )
 
 IMG_COUNT=0
+PID1=""
+PID2=""
+
+# Run both image generations in parallel
 for i in 0 1; do
   PROMPT="${PROMPTS[$i]}"
   OUTFILE="$OUTDIR/frames/frame_$((i+1)).png"
@@ -92,19 +96,19 @@ for i in 0 1; do
   fi
 
   echo "  🖼️ Generating image $((i+1))/2..."
+  
+  (
+    RESPONSE=$(curl -s --max-time 45 -X POST "https://openrouter.ai/api/v1/chat/completions" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+      -H "HTTP-Referer: https://github.com/ankurdixit787" \
+      -d "{
+        \"model\": \"google/gemini-3-pro-image-preview\",
+        \"messages\": [{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Generate photorealistic 1024x1792 portrait: $PROMPT\"}]}],
+        \"max_tokens\": 4096
+      }" 2>/dev/null)
 
-  RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-    -H "HTTP-Referer: https://github.com/ankurdixit787" \
-    -d "{
-      \"model\": \"google/gemini-3-pro-image-preview\",
-      \"messages\": [{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Generate photorealistic 1024x1792 portrait: $PROMPT\"}]}],
-      \"max_tokens\": 4096
-    }")
-
-  # Extract base64 image from response
-  B64=$(echo "$RESPONSE" | $PY3 -c "
+    B64=$(echo "$RESPONSE" | $PY3 -c "
 import sys,json,re
 data=json.load(sys.stdin)
 msg=data.get('choices',[{}])[0].get('message',{})
@@ -120,32 +124,35 @@ content=msg.get('content','')
 m=re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)',content)
 if m: print(m.group(1))
 else: print('NO_IMAGE')
-" 2>/dev/null) || echo "PARSE_ERROR"
+" 2>/dev/null) || B64="PARSE_ERROR"
 
-  if [[ "$B64" == URL:http* ]]; then
-    URL="${B64#URL:}"
-    curl -s "$URL" -o "$OUTFILE"
-  elif [[ "$B64" != "NO_IMAGE" && "$B64" != "PARSE_ERROR" ]]; then
-    echo "$B64" | base64 -d > "$OUTFILE"
-  else
-    echo "  ⚠️ Image parse failed, trying backup (Wikimedia)..."
-    # Fallback: try Wikimedia Commons
-    SEARCH=$(echo "$DEITY hindu god statue" | sed 's/ /+/g')
-    IMG_URL=$(curl -s "https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${SEARCH}&srnamespace=6&format=json&srlimit=3" | \
-      $PY3 -c "import sys,json; d=json.load(sys.stdin); items=d.get('query',{}).get('search',[]); print(items[0]['title'] if items else 'NONE')")
-    if [ "$IMG_URL" != "NONE" ]; then
-      curl -s "https://commons.wikimedia.org/wiki/Special:FilePath/${IMG_URL}?width=1024" -o "$OUTFILE"
+    if [[ "$B64" == URL:http* ]]; then
+      URL="${B64#URL:}"
+      curl -s "$URL" -o "$OUTFILE"
+    elif [[ "$B64" != "NO_IMAGE" && "$B64" != "PARSE_ERROR" ]]; then
+      echo "$B64" | base64 -d > "$OUTFILE" 2>/dev/null
     fi
-  fi
 
-  SIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || echo 0)
-  if [ "$SIZE" -gt 50000 ]; then
-    echo "  ✅ Image $((i+1)) saved ($((SIZE/1024))KB)"
-    IMG_COUNT=$((IMG_COUNT + 1))
+    SIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || echo 0)
+    if [ "$SIZE" -gt 50000 ]; then
+      echo "  ✅ Image $((i+1)) saved ($((SIZE/1024))KB)" >&2
+      exit 0
+    else
+      rm -f "$OUTFILE"
+      exit 1
+    fi
+  ) &
+  
+  if [ $i -eq 0 ]; then
+    PID1=$!
   else
-    echo "  ❌ Image $((i+1)) too small"
-    rm -f "$OUTFILE"
+    PID2=$!
   fi
+done
+
+# Wait for parallel jobs
+for pid in $PID1 $PID2; do
+  [ -n "$pid" ] && wait "$pid" && IMG_COUNT=$((IMG_COUNT + 1))
 done
 
 if [ "$IMG_COUNT" -lt 1 ]; then
