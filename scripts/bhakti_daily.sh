@@ -41,13 +41,13 @@ TAGS=(
 )
 
 QUERIES=(
-  [0]="Shiva bhajan trending shorts 1M views"
-  [1]="Hanuman bhajan trending shorts viral"
-  [2]="Ganesh bhajan trending shorts viral"
-  [3]="Durga Maa bhajan trending shorts"
-  [4]="Krishna bhajan trending shorts viral"
-  [5]="Vishnu bhajan trending shorts viral"
-  [6]="Surya bhajan trending shorts viral"
+  [0]="Shiva status shorts 1M"
+  [1]="Hanuman status shorts 1M"
+  [2]="Ganesh status shorts 1M"
+  [3]="Durga Maa status shorts 1M"
+  [4]="Krishna status shorts 1M"
+  [5]="Vishnu status shorts 1M"
+  [6]="Surya status shorts 1M"
 )
 
 WORKDIR="/home/ankurdixitd/bhakti-videos"
@@ -254,14 +254,15 @@ $PY3 << 'PYEOF'
 import subprocess, json, sys, os
 
 DEITY = os.environ.get("DEITY", "Vishnu")
-QUERY = os.environ.get("QUERY", f"{DEITY} bhajan trending shorts viral")
+QUERY = os.environ.get("QUERY", f"{DEITY} status shorts 1M")
 
-# Try multiple queries for better viral results
+# Try multiple queries for better viral results  
+# 4 tiers: status/shorts/trending/whatsapp
 queries = [
     QUERY,
-    f"{DEITY} bhajan shorts 1M",
-    f"{DEITY} trending shorts viral",
+    f"{DEITY} whatsapp status trending",
     f"viral {DEITY} bhajan shorts",
+    f"{DEITY} trending shorts",
 ]
 
 seen = set()
