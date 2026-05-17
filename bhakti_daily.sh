@@ -67,7 +67,44 @@ mkdir -p "$OUTDIR/frames"
 echo ""
 echo "[1/4] Generating image of $DEITY..."
 
-PROMPT="Photorealistic portrait of Lord $DEITY, divine Hindu god, sacred temple background, golden divine glow, spiritual atmosphere, highly detailed, 8k, devotional Indian art style, NO text NO watermark, unique composition, varied pose and lighting, cinematic dramatic angle"
+# Random style variations for unique images each time
+STYLES=(
+  "photorealistic, cinematic dramatic lighting, golden hour glow, intricate details"
+  "divine ethereal glow, soft ambient light, mystical atmosphere, highly detailed"
+  "temple oil painting style, rich warm colors, sacred atmosphere, 8k detail"
+  "cinematic portrait, rim lighting, golden halo background, devotional art"
+  "traditional Indian art style, vibrant colors, divine radiance, temple setting"
+  "hyperrealistic, volumetric lighting, sacred smoke effects, golden aura"
+  "spiritual portrait, backlit divine glow, intricate jewelry, 8k resolution"
+  "devotional art, warm golden tones, temple pillars background, dramatic angle"
+)
+ANGLES=(
+  "front facing portrait, direct eye contact"
+  "slight three-quarter view, looking upward"
+  "profile view, divine side lighting"
+  "low angle looking up, majestic perspective"
+  "close-up portrait, intense expression"
+  "wide portrait, full body with temple background"
+)
+BACKGROUNDS=(
+  "ancient Hindu temple with golden pillars and oil lamps"
+  "mountain temple at sunrise with mist and golden light"
+  "sacred river bank with temple ghats and diyas"
+  "cosmic background with stars and divine light rays"
+  "forest temple with ancient trees and spiritual aura"
+  "cave temple with stalactites and glowing crystals"
+)
+
+# Pick random style elements
+STYLE_IDX=$((RANDOM % ${#STYLES[@]}))
+ANGLE_IDX=$((RANDOM % ${#ANGLES[@]}))
+BG_IDX=$((RANDOM % ${#BACKGROUNDS[@]}))
+
+PROMPT="Generate photorealistic 1024x1792 portrait of Lord $DEITY, divine Hindu god. ${STYLES[$STYLE_IDX]}. ${ANGLES[$ANGLE_IDX]}. Background: ${BACKGROUNDS[$BG_IDX]}. NO text NO watermark NO logo. Unique composition, varied pose and lighting each time."
+
+echo "  🎨 Style: ${STYLES[$STYLE_IDX]:0:50}..."
+echo "  📐 Angle: ${ANGLES[$ANGLE_IDX]}"
+echo "  🏛️  Background: ${BACKGROUNDS[$BG_IDX]:0:50}..."
 OFILE="$OUTDIR/frames/frame_1.png"
 
 # Check if image exists and is less than 48 hours old
