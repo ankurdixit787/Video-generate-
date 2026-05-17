@@ -254,64 +254,61 @@ $PY3 << 'PYEOF'
 import subprocess, json, sys, os
 
 DEITY = os.environ.get("DEITY", "Vishnu")
-QUERY = os.environ.get("QUERY", f"{DEITY} bhajan trending shorts")
+QUERY = os.environ.get("QUERY", f"{DEITY} bhajan trending shorts viral")
 
-# Search for top results
-result = subprocess.run(
-    ["yt-dlp", "--dump-json", "--no-warnings",
-     f"ytsearch20:{QUERY}"],
-    capture_output=True, text=True, timeout=30
-)
+# Try multiple queries for better viral results
+queries = [
+    QUERY,
+    f"{DEITY} bhajan shorts 1M",
+    f"{DEITY} trending shorts viral",
+    f"viral {DEITY} bhajan shorts",
+]
 
-lines = result.stdout.strip().split("\n")
+seen = set()
+all_lines = []
+for q in queries:
+    result = subprocess.run(
+        ["yt-dlp", "--dump-json", "--no-warnings",
+         f"ytsearch10:{q}"],
+        capture_output=True, text=True, timeout=20
+    )
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+            if data["id"] not in seen:
+                seen.add(data["id"])
+                all_lines.append(data)
+        except:
+            pass
+
 candidates = []
-for line in lines:
-    if not line.strip():
-        continue
-    try:
-        data = json.loads(line)
+for data in all_lines:
+    dur = data.get("duration", 999)
+    views = data.get("view_count", 0)
+    title = data.get("title", "?")
+    vid = data["id"]
+    if dur <= 90 and views >= 50000:
+        candidates.append((dur, -views, title, vid, views))
+
+if not candidates:
+    for data in all_lines:
         dur = data.get("duration", 999)
         views = data.get("view_count", 0)
         title = data.get("title", "?")
         vid = data["id"]
-        # Only accept videos with 50k+ views (viral quality)
-        # and duration under 90s (Short-friendly)
-        if dur <= 90 and views >= 50000:
+        if dur <= 120 and views >= 10000:
             candidates.append((dur, -views, title, vid, views))
-    except:
-        pass
 
 if not candidates:
-    # Fallback: try with lower threshold
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            data = json.loads(line)
-            dur = data.get("duration", 999)
-            views = data.get("view_count", 0)
-            title = data.get("title", "?")
-            vid = data["id"]
-            if dur <= 120 and views >= 10000:
-                candidates.append((dur, -views, title, vid, views))
-        except:
-            pass
-
-if not candidates:
-    # Last resort: any Short under 120s
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            data = json.loads(line)
-            dur = data.get("duration", 999)
-            views = data.get("view_count", 0)
-            title = data.get("title", "?")
-            vid = data["id"]
-            if dur <= 120:
-                candidates.append((dur, -views, title, vid, views))
-        except:
-            pass
+    for data in all_lines:
+        dur = data.get("duration", 999)
+        views = data.get("view_count", 0)
+        title = data.get("title", "?")
+        vid = data["id"]
+        if dur <= 120:
+            candidates.append((dur, -views, title, vid, views))
 
 if not candidates:
     print("NO_SHORTS_FOUND")
