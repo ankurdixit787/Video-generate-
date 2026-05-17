@@ -41,13 +41,13 @@ TAGS=(
 )
 
 QUERIES=(
-  [0]="Shiva bhajan viral shorts 30 seconds"
-  [1]="Hanuman bhajan viral shorts 30 seconds"
-  [2]="Ganesh bhajan viral shorts 30 seconds"
-  [3]="Durga Maa bhajan viral shorts 30 seconds"
-  [4]="Krishna bhajan viral shorts 30 seconds"
-  [5]="Vishnu bhajan viral shorts 30 seconds"
-  [6]="Surya bhajan viral shorts 30 seconds"
+  [0]="Shiva bhajan trending shorts 1M views"
+  [1]="Hanuman bhajan trending shorts viral"
+  [2]="Ganesh bhajan trending shorts viral"
+  [3]="Durga Maa bhajan trending shorts"
+  [4]="Krishna bhajan trending shorts viral"
+  [5]="Vishnu bhajan trending shorts viral"
+  [6]="Surya bhajan trending shorts viral"
 )
 
 WORKDIR="/home/ankurdixitd/bhakti-videos"
@@ -249,17 +249,17 @@ export BHAJAN_PATH="$BHAJAN"
 export DEITY
 export QUERY
 
-# Search top 5 viral Shorts, pick the best (short + high views)
+# Search top 20 viral Shorts, pick the best with 50k+ views
 $PY3 << 'PYEOF'
 import subprocess, json, sys, os
 
 DEITY = os.environ.get("DEITY", "Vishnu")
-QUERY = os.environ.get("QUERY", f"{DEITY} bhajan viral shorts")
+QUERY = os.environ.get("QUERY", f"{DEITY} bhajan trending shorts")
 
 # Search for top results
 result = subprocess.run(
     ["yt-dlp", "--dump-json", "--no-warnings",
-     f"ytsearch5:{QUERY}"],
+     f"ytsearch20:{QUERY}"],
     capture_output=True, text=True, timeout=30
 )
 
@@ -274,11 +274,44 @@ for line in lines:
         views = data.get("view_count", 0)
         title = data.get("title", "?")
         vid = data["id"]
-        # Prefer videos under 60s (Shorts), but accept up to 90s
-        if dur <= 90:
-            candidates.append((dur, -views, title, vid))
+        # Only accept videos with 50k+ views (viral quality)
+        # and duration under 90s (Short-friendly)
+        if dur <= 90 and views >= 50000:
+            candidates.append((dur, -views, title, vid, views))
     except:
         pass
+
+if not candidates:
+    # Fallback: try with lower threshold
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+            dur = data.get("duration", 999)
+            views = data.get("view_count", 0)
+            title = data.get("title", "?")
+            vid = data["id"]
+            if dur <= 120 and views >= 10000:
+                candidates.append((dur, -views, title, vid, views))
+        except:
+            pass
+
+if not candidates:
+    # Last resort: any Short under 120s
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+            dur = data.get("duration", 999)
+            views = data.get("view_count", 0)
+            title = data.get("title", "?")
+            vid = data["id"]
+            if dur <= 120:
+                candidates.append((dur, -views, title, vid, views))
+        except:
+            pass
 
 if not candidates:
     print("NO_SHORTS_FOUND")
@@ -286,8 +319,7 @@ if not candidates:
 
 # Sort by views (highest first), pick best
 candidates.sort()
-dur, nviews, title, vid = candidates[0]
-views = -nviews
+dur, nviews, title, vid, views = candidates[0]
 url = f"https://youtu.be/{vid}"
 print(f"🎵 [{dur}s | {views:,} views] {title}")
 print(f"   {url}")
