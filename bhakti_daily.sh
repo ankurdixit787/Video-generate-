@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-# Daily Bhakti Video Generator — no_agent cron script
-# 1 image, 10s video, viral trending Shorts sound (10-15s)
+# Daily Bhakti Video Generator — OPTIMIZED for speed
+# Target: Complete in under 90 seconds
 set -uo pipefail
 
 source ~/.hermes/.env
 export OPENROUTER_API_KEY
 
 PY3="/usr/bin/python3"
-VDUR=10  # 10 seconds
+VDUR=10
 
 DEITY_MAP=([0]="Shiva" [1]="Hanuman" [2]="Ganesh" [3]="Durga" [4]="Krishna" [5]="Hanuman" [6]="Surya")
 
 TITLES=(
-  [0]="🔱 Har Har Mahadev - Shiv Shankar Bhajan | Shiva Tandava | Viral Bhakti Shorts"
-  [1]="🙏 Jai Shri Ram - Hanuman Chalisa | Bajrangbali Ki Jai | Viral Hanuman Bhajan"
-  [2]="🐘 Ganpati Bappa Morya ✨ | Ganesh Aarti | Mangalmurti Viral Shorts"
-  [3]="🛡️ Maa Durga - Jai Ambe Gauri 🙏 | Navratri Special | Viral Devi Bhajan"
-  [4]="🪄 Radhe Radhe - Shri Krishna 🙌 | Vrindavan Ki Leela | Viral Bhakti Shorts"
-  [5]="🙏 Jai Shri Ram - Hanuman Chalisa | Bajrangbali Ki Jai | Viral Hanuman Bhajan"
-  [6]="☀️ Jai Surya Dev - Surya Bhagwan 🙏 | Surya Namaskar | Viral Bhakti Shorts"
+  [0]="🔱 Har Har Mahadev | Shiv Tandava | Mahadev Bhajan 2026"
+  [1]="🙏 Jai Bajrangbali | Hanuman Chalisa | Hanuman Bhajan 2026"
+  [2]="🐘 Ganpati Bappa Morya | Ganesh Aarti | Siddhivinayak Bhajan"
+  [3]="🛡️ Jai Maa Durga | Durga Chalisa | Navratri Bhajan 2026"
+  [4]="🪄 Radhe Radhe | Krishna Bhajan | Govind Bolo Gopal Bolo"
+  [5]="🙏 Jai Bajrangbali | Hanuman Chalisa | Hanuman Bhajan 2026"
+  [6]="☀️ Jai Surya Dev | Surya Namaskar Mantra | Aditya Hridayam"
 )
 
 TAGS=(
-  [0]="shiva,mahadev,shivratri,bhakti,bhole baba,har har mahadev,shiv tandav,mantra,hindu god,devotional,viral shorts,shiv bhajan"
-  [1]="hanuman,bajrangbali,hanumanchalisa,jai shri ram,sankat mochan,bhakti,devotional,viral shorts,hanuman bhajan,ram bhakt"
-  [2]="ganesh,ganpati,ganeshchaturthi,mangalmurti,bappa,siddhivinayak,bhakti,viral shorts,ganesh aarti"
-  [3]="durga,maadurga,navratri,jai ambe gouri,devi,chandi,sheron wali maa,bhakti,viral shorts,maa durga bhajan"
-  [4]="krishna,radhekrishna,janmashtami,radhe radhe,shri krishna,govind,vrindavan,bhakti,viral shorts,krishna bhajan"
-  [5]="hanuman,bajrangbali,hanumanchalisa,jai shri ram,sankat mochan,bhakti,devotional,viral shorts,hanuman bhajan,ram bhakt"
-  [6]="surya,suryadev,sun,surya namaskar,surya bhajan,bhakti,devotional,viral shorts,aditya,ravi dev"
+  [0]="shiva,mahadev,shivratri,bhakti,bhole baba,har har mahadev,shiv tandav,mantra,hindu god,devotional,shiv bhajan,shiv shankar,mahadev status,shiva bhakti,om namah shivay,shiv parvati,tridev,kailash,shivling,neelkanth"
+  [1]="hanuman,bajrangbali,hanumanchalisa,jai shri ram,sankat mochan,bhakti,devotional,hanuman bhajan,ram bhakt,hanuman status,jai bajrangbali,sundar kand,hanuman ji,shri ram,ayodhya,hanuman gayatri"
+  [2]="ganesh,ganpati,ganeshchaturthi,mangalmurti,bappa,siddhivinayak,bhakti,ganesh aarti,ganpati bappa morya,ganesh status,vighnaharta,ekadanta,ganesh ji,remover of obstacles,ganesh mantra"
+  [3]="durga,maadurga,navratri,jai ambe gouri,devi,chandi,sheron wali maa,bhakti,maa durga bhajan,durga status,durga chalisa,kali mata,shakti,durga puja,mahishasura mardini,jai maa"
+  [4]="krishna,radhekrishna,janmashtami,radhe radhe,shri krishna,govind,vrindavan,bhakti,krishna bhajan,krishna status,govinda,gopal,banke bihari,krishna flute,makhan chor,yashoda,mathura"
+  [5]="hanuman,bajrangbali,hanumanchalisa,jai shri ram,sankat mochan,bhakti,devotional,hanuman bhajan,ram bhakt,hanuman status,jai bajrangbali,sundar kand,hanuman ji,shri ram,ayodhya,hanuman gayatri"
+  [6]="surya,suryadev,sun god,surya namaskar,surya bhajan,bhakti,aditya,ravi dev,surya mantra,gayatri mantra,sun worship,surya status,aditya hridayam,surya dev,chhath puja,surya devta"
 )
 
 QUERIES=(
@@ -47,7 +47,6 @@ TOKEN_FILE="$WORKDIR/token.json"
 CLIENT_SECRET="$WORKDIR/client_secret.json"
 LOG_FILE="$HOME/Video-generate-/daily_log.txt"
 
-# Detect deity
 WEEKDAY=$(date +%u)
 IDX=$((WEEKDAY - 1))
 DEITY="${DEITY_MAP[$IDX]}"
@@ -63,11 +62,10 @@ echo "==============================="
 
 mkdir -p "$OUTDIR/frames"
 
-# ── Step 1: Generate 1 image ──────────────────────────────────────────────
+# ── Step 1: Generate 1 image (reuse if <48h old) ──────────────────────────
 echo ""
 echo "[1/4] Generating image of $DEITY..."
 
-# Random style variations for unique images each time
 STYLES=(
   "photorealistic, cinematic dramatic lighting, golden hour glow, intricate details"
   "divine ethereal glow, soft ambient light, mystical atmosphere, highly detailed"
@@ -95,22 +93,18 @@ BACKGROUNDS=(
   "cave temple with stalactites and glowing crystals"
 )
 
-# Pick random style elements
 STYLE_IDX=$((RANDOM % ${#STYLES[@]}))
 ANGLE_IDX=$((RANDOM % ${#ANGLES[@]}))
 BG_IDX=$((RANDOM % ${#BACKGROUNDS[@]}))
 
 PROMPT="Generate photorealistic 1024x1792 portrait of Lord $DEITY, divine Hindu god. ${STYLES[$STYLE_IDX]}. ${ANGLES[$ANGLE_IDX]}. Background: ${BACKGROUNDS[$BG_IDX]}. NO text NO watermark NO logo. Unique composition, varied pose and lighting each time."
 
-echo "  🎨 Style: ${STYLES[$STYLE_IDX]:0:50}..."
-echo "  📐 Angle: ${ANGLES[$ANGLE_IDX]}"
-echo "  🏛️  Background: ${BACKGROUNDS[$BG_IDX]:0:50}..."
 OFILE="$OUTDIR/frames/frame_1.png"
 
 # Check if image exists and is less than 48 hours old
 if [ -f "$OFILE" ]; then
   FILE_AGE=$(( $(date +%s) - $(stat -c %Y "$OFILE") ))
-  MAX_AGE=$((48 * 3600))  # 48 hours in seconds
+  MAX_AGE=$((48 * 3600))
   if [ "$FILE_AGE" -lt "$MAX_AGE" ]; then
     echo "  ♻️ Reusing image ($((FILE_AGE / 3600))h old, max 48h)"
     IMG_OK=1
@@ -122,13 +116,13 @@ fi
 
 if [ -z "${IMG_OK:-}" ]; then
   echo "  🖼️ Generating NEW image..."
-  RESP=$(curl -s --max-time 45 -X POST "https://openrouter.ai/api/v1/chat/completions" \
+  RESP=$(curl -s --max-time 30 -X POST "https://openrouter.ai/api/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $OPENROUTER_API_KEY" \
     -H "HTTP-Referer: https://github.com/ankurdixit787" \
     -d "{
       \"model\": \"google/gemini-3-pro-image-preview\",
-      \"messages\": [{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Generate photorealistic 1024x1792 portrait: $PROMPT\"}]}],
+      \"messages\": [{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"$PROMPT\"}]}],
       \"max_tokens\": 4096
     }" 2>/dev/null)
 
@@ -152,7 +146,7 @@ else: print('NO_IMAGE')
 
   if [[ "$B64" == URL:http* ]]; then
     URL="${B64#URL:}"
-    curl -s "$URL" -o "$OFILE"
+    curl -s --max-time 15 "$URL" -o "$OFILE"
   elif [[ "$B64" != "NO_IMAGE" && "$B64" != "PARSE_ERROR" ]]; then
     echo "$B64" | base64 -d > "$OFILE" 2>/dev/null
   fi
@@ -170,14 +164,13 @@ if [ -z "${IMG_OK:-}" ]; then
   exit 1
 fi
 
-# ── Step 2: Create 10s video with ULTRA FAST 3D Zoom+Rotate effect ──────────
+# ── Step 2: Create 10s video (optimized — fewer frames) ─────────────────────
 echo ""
-echo "[2/4] Creating ${VDUR}s video with 3D effect..."
+echo "[2/4] Creating ${VDUR}s video..."
 
 CLIP_OUT="$OUTDIR/clip.mp4"
-FRAMES=$((VDUR * 30))
+FRAMES=$((VDUR * 24))  # 24fps instead of 30 for speed
 
-# Use Python for ULTRA FAST zoom+rotate effect (OpenCV)
 $PY3 << PYEOF
 import cv2, numpy as np, subprocess, os
 
@@ -190,20 +183,17 @@ os.makedirs(frames_dir, exist_ok=True)
 FRAMES = $FRAMES
 for i in range(FRAMES):
     t = i / FRAMES
-    # ULTRA FAST: zoom 1.0→1.35, rotate ±5°, double cycle
     scale = 1.0 + 0.35 * np.sin(t * np.pi)
     angle = 5 * np.sin(t * 4 * np.pi)
     M = cv2.getRotationMatrix2D((cx, cy), angle, scale)
     rotated = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REFLECT)
-    # Resize to 1080x1920
-    resized = cv2.resize(rotated, (1080, 1920), interpolation=cv2.INTER_LANCZOS4)
+    resized = cv2.resize(rotated, (1080, 1920), interpolation=cv2.INTER_LINEAR)
     cv2.imwrite(f"{frames_dir}/frame_{i:04d}.png", resized)
 
-# Compile to video
 subprocess.run([
-    "ffmpeg", "-y", "-framerate", "30",
+    "ffmpeg", "-y", "-framerate", "24",
     "-i", f"{frames_dir}/frame_%04d.png",
-    "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
     "-pix_fmt", "yuv420p", "-t", str($VDUR),
     "$CLIP_OUT"
 ], capture_output=True)
@@ -211,7 +201,7 @@ print("VIDEO_CREATED")
 PYEOF
 
 if [ -f "$CLIP_OUT" ] && [ "$(stat -c%s "$CLIP_OUT" 2>/dev/null || echo 0)" -gt 100000 ]; then
-  echo "  ✅ Video done (3D ULTRA FAST effect)"
+  echo "  ✅ Video done"
   cp "$CLIP_OUT" "$OUTDIR/video_nosound.mp4"
 else
   echo "❌ Video creation failed"
@@ -219,7 +209,7 @@ else
   exit 1
 fi
 
-# ── Step 3: Find trending 10-12s sound ────────────────────────────────────
+# ── Step 3: Find trending sound (optimized — single search) ─────────────────
 echo ""
 echo "[3/4] Finding trending sound for $DEITY..."
 
@@ -237,7 +227,6 @@ DEITY = os.environ["DEITY"]
 QUERY = os.environ["QUERY"]
 USED_FILE = os.environ["USED_FILE"]
 
-# Load previously used sound IDs
 used_ids = set()
 if os.path.exists(USED_FILE):
     try:
@@ -246,73 +235,55 @@ if os.path.exists(USED_FILE):
     except:
         pass
 
-queries = [
-    QUERY,
-    f"{DEITY} whatsapp status trending",
-    f"viral {DEITY} bhajan shorts",
-    f"{DEITY} trending shorts",
-]
+# Single search query
+r = subprocess.run(
+    ["yt-dlp", "--extractor-args", "youtube:player_client=android",
+     "--dump-json", "--no-warnings", f"ytsearch5:{DEITY} status shorts 1M"],
+    capture_output=True, text=True, timeout=15
+)
 
-seen=set()
-all_v=[]
-for q in queries:
-    r=subprocess.run(["yt-dlp","--extractor-args","youtube:player_client=android","--dump-json","--no-warnings",f"ytsearch10:{q}"],
-        capture_output=True,text=True,timeout=20)
-    for line in r.stdout.strip().split("\n"):
-        if not line.strip(): continue
-        try:
-            d=json.loads(line)
-            if d["id"] not in seen:
-                seen.add(d["id"])
-                all_v.append(d)
-        except: pass
+seen = set()
+all_v = []
+for line in r.stdout.strip().split("\n"):
+    if not line.strip():
+        continue
+    try:
+        d = json.loads(line)
+        if d["id"] not in seen:
+            seen.add(d["id"])
+            all_v.append(d)
+    except:
+        pass
 
-# Filter out previously used sounds
 fresh_v = [d for d in all_v if d["id"] not in used_ids]
 
-# Tier 1: 10-20s, 50k+ views (clear voice bhajans)
-c=[(d["duration"],d["view_count"],d["title"],d["id"])
-   for d in fresh_v if 10<=d.get("duration",0)<=20 and d.get("view_count",0)>=50000]
-c.sort(key=lambda x:-x[1])
+c = [(d["duration"], d["view_count"], d["title"], d["id"])
+     for d in fresh_v if 10 <= d.get("duration", 0) <= 20 and d.get("view_count", 0) >= 50000]
+c.sort(key=lambda x: -x[1])
 
-# Tier 2: 10-25s, 10k+ views
 if not c:
-    c=[(d["duration"],d["view_count"],d["title"],d["id"])
-       for d in fresh_v if 10<=d.get("duration",0)<=25 and d.get("view_count",0)>=10000]
-    c.sort(key=lambda x:-x[1])
-
-# Tier 3: any 10-30s
-if not c:
-    c=[(d["duration"],d["view_count"],d["title"],d["id"])
-       for d in fresh_v if 10<=d.get("duration",0)<=30]
-    c.sort(key=lambda x:-x[1])
-
-# Fallback: if all fresh used up, reset and pick from all
-if not c:
-    c=[(d["duration"],d["view_count"],d["title"],d["id"])
-       for d in all_v if 10<=d.get("duration",0)<=20 and d.get("view_count",0)>=50000]
-    c.sort(key=lambda x:-x[1])
-    if c:
-        print("⚠️ All fresh sounds used, reusing from full pool")
+    c = [(d["duration"], d["view_count"], d["title"], d["id"])
+         for d in fresh_v if 10 <= d.get("duration", 0) <= 30]
+    c.sort(key=lambda x: -x[1])
 
 if not c:
     print("NO_SHORTS_FOUND")
     sys.exit(1)
 
-dur,views,title,vid=c[0]
-url=f"https://youtu.be/{vid}"
+dur, views, title, vid = c[0]
+url = f"https://youtu.be/{vid}"
 print(f"🎵 [{dur}s | {views:,} views] {title}")
-print(f"   {url}")
 
-subprocess.run(["yt-dlp","--extractor-args","youtube:player_client=android","--quiet","--no-warnings",url,
-    "-x","--audio-format","mp3",
-    "--postprocessor-args","ffmpeg:-ss 0 -t 12",
-    "-o",os.environ["BHAJAN_PATH"]],timeout=60)
+subprocess.run([
+    "yt-dlp", "--extractor-args", "youtube:player_client=android",
+    "--quiet", "--no-warnings", url,
+    "-x", "--audio-format", "mp3",
+    "--postprocessor-args", "ffmpeg:-ss 0 -t 12",
+    "-o", os.environ["BHAJAN_PATH"]
+], timeout=30)
 
-# Save to used sounds list
 used_ids.add(vid)
 json.dump({"used_ids": list(used_ids)}, open(USED_FILE, "w"))
-print(f"📝 Saved to used_sounds.json (total: {len(used_ids)})")
 print("AUDIO_OK")
 PYEOF
 
@@ -354,15 +325,15 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-VP=os.environ["VIDEO_PATH"]
-DEITY=os.environ["DEITY"]
-TITLE=os.environ["TITLE"]
-TAGS=os.environ["TAG"].split(",")+["shorts","bhakti","hindu","viral","trending","youtubeshorts"]
+VP = os.environ["VIDEO_PATH"]
+DEITY = os.environ["DEITY"]
+TITLE = os.environ["TITLE"]
+TAGS = os.environ["TAG"].split(",") + ["shorts", "bhakti", "hindu", "viral", "trending", "youtubeshorts"]
 
-tok=json.load(open("/home/ankurdixitd/bhakti-videos/token.json"))
-cli=json.load(open("/home/ankurdixitd/bhakti-videos/client_secret.json"))["web"]
+tok = json.load(open("/home/ankurdixitd/bhakti-videos/token.json"))
+cli = json.load(open("/home/ankurdixitd/bhakti-videos/client_secret.json"))["web"]
 
-creds=Credentials(
+creds = Credentials(
     token=tok.get("access_token"),
     refresh_token=tok.get("refresh_token"),
     token_uri=cli["token_uri"],
@@ -370,26 +341,46 @@ creds=Credentials(
     client_secret=cli["client_secret"],
     scopes=["https://www.googleapis.com/auth/youtube.upload"]
 )
-if not creds.valid and creds.refresh_tok:
+if not creds.valid and creds.refresh_token:
     creds.refresh(Request())
-    tok["access_token"]=creds.token
-    json.dump(tok,open("/home/ankurdixitd/bhakti-videos/token.json","w"))
+    tok["access_token"] = creds.token
+    json.dump(tok, open("/home/ankurdixitd/bhakti-videos/token.json", "w"))
 
-yt=build("youtube","v3",credentials=creds)
+yt = build("youtube", "v3", credentials=creds)
 
-body={
-    "snippet":{"title":TITLE,"description":f"""{TITLE}\nभगवान {DEITY} की जय हो! 🙏✨\n\n#shorts #{DEITY} #bhakti #bhakti #viral #trending""",
-    "tags":TAGS,"categoryId":"22"},
-    "status":{"privacyStatus":"public","selfDeclaredMadeForKids":False}
+body = {
+    "snippet": {
+        "title": TITLE,
+        "description": f"""{TITLE}
+
+🙏 भगवान {DEITY} की जय हो! Har Har Mahadev! 🙏
+
+🔔 हर रोज़ नई भक्ति वीडियो के लिए चैनल को Subscribe करें और Bell 🔔 दबाएं!
+
+📌 इस वीडियो में:
+• {DEITY} जी की दिव्य भक्ति गीत
+• सुंदर भगवान की तस्वीर
+• मंत्र जाप और आरती
+
+🌐 हमारे चैनल पर देखें: https://www.youtube.com/@BhaktiShorts
+📱 Instagram: https://www.instagram.com/bhakti_shorts
+📘 Facebook: https://www.facebook.com/bhakti.shorts
+
+⚠️ Disclaimer: यह वीडियो AI द्वारा generate की गई है। भक्ति का उद्देश्य मात्र पूजा और आस्था है।
+
+#{DEITY} #bhakti #devotional #hindu #god #mantra #aarti #bhajan #hinduism #spiritual #divine #shorts #viral #trending #india #sanatandharma""",
+        "tags": TAGS, "categoryId": "22"
+    },
+    "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
 }
 
-media=MediaFileUpload(VP,chunksize=-1,resumable=True)
-resp=yt.videos().insert(part="snippet,status",body=body,media_body=media).execute()
-vid=resp["id"]
-url=f"https://youtu.be/{vid}"
+media = MediaFileUpload(VP, chunksize=-1, resumable=True)
+resp = yt.videos().insert(part="snippet,status", body=body, media_body=media).execute()
+vid = resp["id"]
+url = f"https://youtu.be/{vid}"
 print(f"  ✅ {url}")
 
-with open("/home/ankurdixitd/Video-generate-/daily_log.txt","a") as f:
+with open("/home/ankurdixitd/Video-generate-/daily_log.txt", "a") as f:
     f.write(f"{datetime.now().isoformat()} | {DEITY} | {url}\n")
 print(f"VIDEO_URL:{url}")
 PYEOF
